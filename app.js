@@ -117,20 +117,7 @@ function suggestAccessibleColor(hex, bgLight, bgDark, isText, contrastMode) {
     const start = hexToRgb(hex);
     const hsl = rgbToHsl(start);
 
-    // Try black/white first (fast path)
-    const white = '#ffffff';
-    const black = '#000000';
-    if (contrastMode === 'wcag') {
-        const wr = Math.min(getContrastRatio(white, bgLight), getContrastRatio(white, bgDark));
-        if (wr >= thresholds.wcag) return white;
-        const br = Math.min(getContrastRatio(black, bgLight), getContrastRatio(black, bgDark));
-        if (br >= thresholds.wcag) return black;
-    } else {
-        const wl = Math.min(Math.abs(getAPCAContrast(white, bgLight)), Math.abs(getAPCAContrast(white, bgDark)));
-        if (wl >= thresholds.apca) return white;
-        const bl = Math.min(Math.abs(getAPCAContrast(black, bgLight)), Math.abs(getAPCAContrast(black, bgDark)));
-        if (bl >= thresholds.apca) return black;
-    }
+    // Prefer hue-preserving adjustments: adjust lightness first, then saturation, then small hue nudges.
 
     // Prefer hue-preserving adjustments: adjust lightness first, then saturation if needed.
     const maxSteps = 30;
@@ -163,7 +150,36 @@ function suggestAccessibleColor(hex, bgLight, bgDark, isText, contrastMode) {
         }
     }
 
-    // Last resort: brute force across hue/lightness grid (keeps some proximity to original)
+    // Next: try small hue nudges with preserved saturation/lightness
+    for (let dh = -18; dh <= 18; dh += 3) {
+        for (let dl = -12; dl <= 12; dl += 3) {
+            const tryH = (hsl.h + dh + 360) % 360;
+            const tryL = Math.min(100, Math.max(0, hsl.l + dl));
+            const tryHex = rgbToHex(hslToRgb({ h: tryH, s: hsl.s, l: tryL }));
+            if (contrastMode === 'wcag') {
+                const r = Math.min(getContrastRatio(tryHex, bgLight), getContrastRatio(tryHex, bgDark));
+                if (r >= thresholds.wcag) return tryHex;
+            } else {
+                const lc = Math.min(Math.abs(getAPCAContrast(tryHex, bgLight)), Math.abs(getAPCAContrast(tryHex, bgDark)));
+                if (lc >= thresholds.apca) return tryHex;
+            }
+        }
+    }
+
+    // Last resort: try black/white fallback
+    const white = '#ffffff';
+    const black = '#000000';
+    if (contrastMode === 'wcag') {
+        const wr = Math.min(getContrastRatio(white, bgLight), getContrastRatio(white, bgDark));
+        if (wr >= thresholds.wcag) return white;
+        const br = Math.min(getContrastRatio(black, bgLight), getContrastRatio(black, bgDark));
+        if (br >= thresholds.wcag) return black;
+    } else {
+        const wl = Math.min(Math.abs(getAPCAContrast(white, bgLight)), Math.abs(getAPCAContrast(white, bgDark)));
+        if (wl >= thresholds.apca) return white;
+        const bl = Math.min(Math.abs(getAPCAContrast(black, bgLight)), Math.abs(getAPCAContrast(black, bgDark)));
+        if (bl >= thresholds.apca) return black;
+    }
     for (let dh = -30; dh <= 30; dh += 6) {
         for (let dl = -20; dl <= 20; dl += 4) {
             const tryH = (hsl.h + dh + 360) % 360;
