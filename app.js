@@ -62,6 +62,126 @@ function getRelativeLuminanceAPCA(hex) {
     return 0.2126 * sr + 0.7152 * sg + 0.0722 * sb;
 }
 
+// Color helpers: hex <-> rgb, rgb <-> hsl
+function hexToRgb(hex) {
+    const parsed = parseInt(hex.slice(1), 16);
+    return { r: (parsed >> 16) & 255, g: (parsed >> 8) & 255, b: parsed & 255 };
+}
+
+function rgbToHex({ r, g, b }) {
+    return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
+}
+
+function rgbToHsl({ r, g, b }) {
+    r /= 255; g /= 255; b /= 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let h, s, l = (max + min) / 2;
+    if (max === min) { h = s = 0; } else {
+        const d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        switch (max) {
+            case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+            case g: h = (b - r) / d + 2; break;
+            case b: h = (r - g) / d + 4; break;
+        }
+        h /= 6;
+    }
+    return { h: h * 360, s: s * 100, l: l * 100 };
+}
+
+function hslToRgb({ h, s, l }) {
+    h /= 360; s /= 100; l /= 100;
+    if (s === 0) {
+        const v = Math.round(l * 255);
+        return { r: v, g: v, b: v };
+    }
+    const hue2rgb = (p, q, t) => {
+        if (t < 0) t += 1;
+        if (t > 1) t -= 1;
+        if (t < 1/6) return p + (q - p) * 6 * t;
+        if (t < 1/2) return q;
+        if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+        return p;
+    };
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    const r = Math.round(hue2rgb(p, q, h + 1/3) * 255);
+    const g = Math.round(hue2rgb(p, q, h) * 255);
+    const b = Math.round(hue2rgb(p, q, h - 1/3) * 255);
+    return { r, g, b };
+}
+
+// Suggest an accessible color by adjusting lightness toward black/white until contrast passes
+function suggestAccessibleColor(hex, bgLight, bgDark, isText, contrastMode) {
+    const thresholds = { wcag: isText ? 4.5 : 3, apca: isText ? 75 : 60 };
+    const start = hexToRgb(hex);
+    const hsl = rgbToHsl(start);
+
+    // Try black/white first (fast path)
+    const white = '#ffffff';
+    const black = '#000000';
+    if (contrastMode === 'wcag') {
+        const wr = Math.min(getContrastRatio(white, bgLight), getContrastRatio(white, bgDark));
+        if (wr >= thresholds.wcag) return white;
+        const br = Math.min(getContrastRatio(black, bgLight), getContrastRatio(black, bgDark));
+        if (br >= thresholds.wcag) return black;
+    } else {
+        const wl = Math.min(Math.abs(getAPCAContrast(white, bgLight)), Math.abs(getAPCAContrast(white, bgDark)));
+        if (wl >= thresholds.apca) return white;
+        const bl = Math.min(Math.abs(getAPCAContrast(black, bgLight)), Math.abs(getAPCAContrast(black, bgDark)));
+        if (bl >= thresholds.apca) return black;
+    }
+
+    // Prefer hue-preserving adjustments: adjust lightness first, then saturation if needed.
+    const maxSteps = 30;
+    for (let step = 1; step <= maxSteps; step++) {
+        // subtle lightness moves (both directions)
+        const delta = step * 1.5; // small increments
+        const tryLs = [Math.min(100, hsl.l + delta), Math.max(0, hsl.l - delta)];
+        for (let tryL of tryLs) {
+            const tryHex = rgbToHex(hslToRgb({ h: hsl.h, s: hsl.s, l: tryL }));
+            if (contrastMode === 'wcag') {
+                const r = Math.min(getContrastRatio(tryHex, bgLight), getContrastRatio(tryHex, bgDark));
+                if (r >= thresholds.wcag) return tryHex;
+            } else {
+                const lc = Math.min(Math.abs(getAPCAContrast(tryHex, bgLight)), Math.abs(getAPCAContrast(tryHex, bgDark)));
+                if (lc >= thresholds.apca) return tryHex;
+            }
+        }
+    }
+
+    // If lightness-only adjustments fail, try reducing saturation (toward gray) while preserving hue
+    for (let step = 1; step <= 20; step++) {
+        const newS = Math.max(0, hsl.s - step * 4);
+        const tryHex = rgbToHex(hslToRgb({ h: hsl.h, s: newS, l: hsl.l }));
+        if (contrastMode === 'wcag') {
+            const r = Math.min(getContrastRatio(tryHex, bgLight), getContrastRatio(tryHex, bgDark));
+            if (r >= thresholds.wcag) return tryHex;
+        } else {
+            const lc = Math.min(Math.abs(getAPCAContrast(tryHex, bgLight)), Math.abs(getAPCAContrast(tryHex, bgDark)));
+            if (lc >= thresholds.apca) return tryHex;
+        }
+    }
+
+    // Last resort: brute force across hue/lightness grid (keeps some proximity to original)
+    for (let dh = -30; dh <= 30; dh += 6) {
+        for (let dl = -20; dl <= 20; dl += 4) {
+            const tryH = (hsl.h + dh + 360) % 360;
+            const tryL = Math.min(100, Math.max(0, hsl.l + dl));
+            const tryHex = rgbToHex(hslToRgb({ h: tryH, s: hsl.s, l: tryL }));
+            if (contrastMode === 'wcag') {
+                const r = Math.min(getContrastRatio(tryHex, bgLight), getContrastRatio(tryHex, bgDark));
+                if (r >= thresholds.wcag) return tryHex;
+            } else {
+                const lc = Math.min(Math.abs(getAPCAContrast(tryHex, bgLight)), Math.abs(getAPCAContrast(tryHex, bgDark)));
+                if (lc >= thresholds.apca) return tryHex;
+            }
+        }
+    }
+
+    return hex; // no good suggestion found
+}
+
 // Helper: Detect if an element contains text
 function isTextElement(element) {
     const tagName = element.tagName.toLowerCase();
@@ -151,6 +271,7 @@ const App = () => {
     });
     const [colors, setColors] = useState([]); // [{ hex: '#...', isText: bool, isLarge: bool, count: num }]
     const [darkModeColors, setDarkModeColors] = useState({});
+    const [prevOverrides, setPrevOverrides] = useState({}); // store previous override for revert
     const [a11yStatus, setA11yStatus] = useState('');
     const [currentFileName, setCurrentFileName] = useState('');
     const [contrastMode, setContrastMode] = useState('wcag'); // 'wcag' or 'apca'
@@ -526,6 +647,31 @@ const App = () => {
         fetchRandomSvg();
     }, []);
 
+    // Load persisted settings (overrides, split, filters)
+    useEffect(() => {
+        try {
+            const saved = JSON.parse(localStorage.getItem('darkModeColors') || '{}');
+            setDarkModeColors(saved);
+        } catch (e) {
+            // ignore
+        }
+        const savedSplit = parseFloat(localStorage.getItem('previewSplit'));
+        if (!Number.isNaN(savedSplit)) setPreviewSplit(savedSplit);
+        const savedFilter = localStorage.getItem('filterTextOnly');
+        if (savedFilter !== null) setFilterTextOnly(savedFilter === 'true');
+    }, []);
+
+    // Persist overrides, split and filter choices
+    useEffect(() => {
+        try {
+            localStorage.setItem('darkModeColors', JSON.stringify(darkModeColors || {}));
+            localStorage.setItem('previewSplit', String(previewSplit));
+            localStorage.setItem('filterTextOnly', filterTextOnly ? 'true' : 'false');
+        } catch (e) {
+            // ignore storage errors
+        }
+    }, [darkModeColors, previewSplit, filterTextOnly]);
+
     useEffect(() => {
         if (svgInput && intent) {
             handleOptimize();
@@ -783,9 +929,46 @@ const App = () => {
                                 const next = current ? null : (isText ? '#000000' : '#ffffff');
                                 const copy = { ...darkModeColors };
                                 if (next) copy[c] = next; else delete copy[c];
+                                // Save previous for revert
+                                setPrevOverrides({ ...prevOverrides, [c]: current || null });
                                 setDarkModeColors(copy);
                             }
                         }, 'Toggle Override'),
+
+                        // Accessibility suggestion button
+                        h('button', {
+                            class: 'small secondary',
+                            style: 'margin-left:6px;',
+                            title: 'Suggest an accessible replacement',
+                            onClick: () => {
+                                const suggested = suggestAccessibleColor(c, bgLight, bgDark, isText, contrastMode);
+                                if (suggested && suggested !== c) {
+                                    setPrevOverrides({ ...prevOverrides, [c]: darkModeColors[c] || null });
+                                    setDarkModeColors({ ...darkModeColors, [c]: suggested });
+                                    setA11yStatus(`Suggested ${suggested} for ${c}`);
+                                    setTimeout(() => setA11yStatus(''), 2000);
+                                } else {
+                                    setA11yStatus('No suitable suggestion found');
+                                    setTimeout(() => setA11yStatus(''), 1500);
+                                }
+                            }
+                        }, 'A11y'),
+
+                        // Revert button (if previous override exists)
+                        prevOverrides[c] && h('button', {
+                            class: 'small',
+                            style: 'margin-left:4px;',
+                            title: 'Revert previous override',
+                            onClick: () => {
+                                const prev = prevOverrides[c];
+                                const copy = { ...darkModeColors };
+                                if (prev) copy[c] = prev; else delete copy[c];
+                                setDarkModeColors(copy);
+                                const p = { ...prevOverrides };
+                                delete p[c];
+                                setPrevOverrides(p);
+                            }
+                        }, 'Revert'),
                          h('div', { style: 'margin-left:auto; display:flex; gap:2px; align-items:center;' }, [
                             // Light Mode
                             h('div', { 
@@ -807,6 +990,21 @@ const App = () => {
                         ])
                     ]);
                 }))
+            ])
+            ,
+            // Revert All Overrides
+            h('div', { class: 'sidebar-section' }, [
+                h('button', {
+                    class: 'small',
+                    onClick: () => {
+                        if (!confirm('Revert ALL color overrides? This will remove dark-mode overrides.')) return;
+                        // Move current overrides into prevOverrides so per-color revert can still work
+                        setPrevOverrides({ ...prevOverrides, ...darkModeColors });
+                        setDarkModeColors({});
+                        setA11yStatus('All overrides reverted');
+                        setTimeout(() => setA11yStatus(''), 2000);
+                    }
+                }, 'Revert All Overrides')
             ])
         ]),
 
