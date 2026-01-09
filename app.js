@@ -187,8 +187,6 @@ const App = () => {
         if (dialogRef.current) dialogRef.current.close();
     };
 
-    };
-
     // --- Parsers & Processors ---
 
     const parseColors = (svgString) => {
@@ -213,15 +211,55 @@ const App = () => {
                         if (isLarge) info.isLarge = true;
                     } else {
                         colorMap.set(hex, { hex, isText, isLarge, count: 1 });
+                    }
+                }
+            });
+        });
+        
+        return Array.from(colorMap.values());
+    };
+
+    const handleOptimize = async () => {
+        setA11yStatus(`Processing SVG... ${new Date().toLocaleTimeString()}`);
+        
+        try {
+            if (!svgInput) return;
+
+            let svgCode = svgInput;
+
+            // 1. SVGO Optimization (Safe config with a11y preservation)
+            try {
+                const result = optimize(svgCode, {
+                    plugins: [
+                        {
+                            name: 'preset-default',
+                            params: {
+                                overrides: {
+                                    // Preserve accessibility attributes
+                                    removeViewBox: false,
+                                    removeTitle: false,
+                                    removeDesc: false
+                                }
+                            }
+                        },
+                        'removeDimensions',
+                        {
+                            name: 'removeAttrs',
+                            params: { 
+                                attrs: '(data-.*)',
+                                // Preserve all ARIA and accessibility attributes
+                                preserveCurrentColor: true
+                            } 
+                        }
+                    ]
+                });
+                if (result.data) svgCode = result.data;
+            } catch (optErr) {
                 console.warn('SVGO Optimization failed, using raw input:', optErr);
                 // Continue with raw SVG if optimization fails
             }
-                // --- Effects ---
-    
-                useEffect(() => {
-                    fetchRandomSvg();
-                }, []);
             
+            let doc = new DOMParser().parseFromString(svgCode, 'image/svg+xml');
             let svgEl = doc.querySelector('svg');
 
             if (!svgEl) throw new Error("Invalid SVG: Could not parse <svg> element.");
@@ -425,47 +463,6 @@ const App = () => {
 
     // --- Effects ---
 
-    // Setup resizer event handling
-    useEffect(() => {
-        const container = previewContainerRef.current;
-        if (!container) return;
-        
-        const resizer = container.querySelector('.preview-resizer');
-        if (!resizer) return;
-        
-        const handleResizerDown = (e) => {
-            e.preventDefault();
-            isResizingRef.current = true;
-            
-            const handleMove = (moveEvent) => {
-                if (!isResizingRef.current || !container) return;
-                
-                const rect = container.getBoundingClientRect();
-                const newSplit = ((moveEvent.clientX - rect.left) / rect.width) * 100;
-                
-                // Clamp between 20% and 80%
-                if (newSplit >= 20 && newSplit <= 80) {
-                    setPreviewSplit(newSplit);
-                }
-            };
-            
-            const handleUp = () => {
-                isResizingRef.current = false;
-                document.removeEventListener('mousemove', handleMove);
-                document.removeEventListener('mouseup', handleUp);
-            };
-            
-            document.addEventListener('mousemove', handleMove);
-            document.addEventListener('mouseup', handleUp);
-        };
-        
-        resizer.addEventListener('mousedown', handleResizerDown);
-        
-        return () => {
-            resizer.removeEventListener('mousedown', handleResizerDown);
-        };
-    }, []);
-
     const fetchRandomSvg = async (attemptsLeft = 3) => {
         try {
             setA11yStatus('Loading random sample...');
@@ -563,6 +560,45 @@ const App = () => {
         } else {
             setA11yStatus('Error: Please drop a valid SVG file.');
         }
+    };
+
+    const handleResizerMouseDown = (e) => {
+        e.preventDefault();
+        const container = previewContainerRef.current;
+        if (!container) return;
+
+        isResizingRef.current = true;
+
+        const handleMouseMove = (moveEvent) => {
+            if (!isResizingRef.current) return;
+            if (moveEvent.cancelable) moveEvent.preventDefault();
+
+            const point = moveEvent.touches && moveEvent.touches.length
+                ? moveEvent.touches[0]
+                : moveEvent;
+
+            const rect = container.getBoundingClientRect();
+            const newSplit = ((point.clientX - rect.left) / rect.width) * 100;
+
+            if (newSplit >= 20 && newSplit <= 80) {
+                setPreviewSplit(newSplit);
+            }
+        };
+
+        const handleMouseUp = () => {
+            isResizingRef.current = false;
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+            document.removeEventListener('touchmove', handleMouseMove);
+            document.removeEventListener('touchend', handleMouseUp);
+            document.removeEventListener('touchcancel', handleMouseUp);
+        };
+
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', handleMouseUp);
+        document.addEventListener('touchmove', handleMouseMove, { passive: false });
+        document.addEventListener('touchend', handleMouseUp);
+        document.addEventListener('touchcancel', handleMouseUp);
     };
 
 
@@ -781,7 +817,15 @@ const App = () => {
                     ])
                 ]),
                 // Resizer Handle
-                h('div', { class: 'preview-resizer', onMouseDown: handleResizerMouseDown })
+                h('div', { 
+                    class: 'preview-resizer', 
+                    style: `left: ${previewSplit}%;`,
+                    onMouseDown: handleResizerMouseDown,
+                    onTouchStart: handleResizerMouseDown,
+                    role: 'separator',
+                    'aria-orientation': 'vertical',
+                    'aria-label': 'Resize preview split'
+                })
             ]),
 
             // Output Section
@@ -795,31 +839,8 @@ const App = () => {
                             setA11yStatus('Copied!');
                             setTimeout(() => setA11yStatus(''), 2000);
                         }
-                            const handleResizerMouseDown = (e) => {
-                                e.preventDefault();
-                                isResizingRef.current = true;
-                                const container = previewContainerRef.current;
-        
-                                const handleMouseMove = (moveEvent) => {
-                                    if (!isResizingRef.current || !container) return;
-            
-                                    const rect = container.getBoundingClientRect();
-                                    const newSplit = ((moveEvent.clientX - rect.left) / rect.width) * 100;
-            
-                                    if (newSplit >= 20 && newSplit <= 80) {
-                                        setPreviewSplit(newSplit);
-                                    }
-                                };
-        
-                                const handleMouseUp = () => {
-                                    isResizingRef.current = false;
-                                    document.removeEventListener('mousemove', handleMouseMove);
-                                    document.removeEventListener('mouseup', handleMouseUp);
-                                };
-        
-                                document.addEventListener('mousemove', handleMouseMove);
-                                document.addEventListener('mouseup', handleMouseUp);
-                            };
+                    }, 'Copy Code')
+                ]),
                 h('pre', { class: 'code-content' }, processedSvg.code)
             ]),
 

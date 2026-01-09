@@ -146,21 +146,35 @@ textarea#svg-code {
 }
 
 /* Resizer handle between preview panes */
+
 .preview-resizer {
     position: absolute;
     top: 0;
-    left: 50%;
-    width: 12px;
+    width: 16px;
     height: 100%;
     transform: translateX(-50%);
     cursor: col-resize;
-    background: linear-gradient(90deg, transparent 0%, var(--border) 50%, transparent 100%);
-    z-index: 10;
+    background: linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.12) 50%, transparent 100%);
+    z-index: 20;
     user-select: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
-.preview-resizer:hover {
-    background: linear-gradient(90deg, transparent 0%, #005a9c 50%, transparent 100%);
+.preview-resizer::before {
+    content: '';
+    width: 3px;
+    height: 48px;
+    background: var(--border);
+    border-radius: 2px;
+    box-shadow: 0 0 0 4px transparent;
+    transition: box-shadow .12s, background .12s;
+}
+
+.preview-resizer:hover::before {
+    box-shadow: 0 0 0 6px rgba(0,90,156,0.08);
+    background: #005a9c;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -324,7 +338,7 @@ dialog h3 { margin-top: 0; }
 
 .color-list {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
     gap: 0.5rem;
 }
 
