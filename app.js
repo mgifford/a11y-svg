@@ -906,6 +906,7 @@ const App = () => {
                     const c = colorInfo.hex;
                     const isText = colorInfo.isText && !showTextAsNonText;
                     const isLarge = colorInfo.isLarge;
+                    const isOverridden = !!darkModeColors[c];
                     
                     let lightRatio, darkRatio, lightLc, darkLc, lightLevel, darkLevel;
                     
@@ -941,8 +942,7 @@ const App = () => {
                             style: 'margin-left:6px;',
                             title: 'Apply or revert an accessible override',
                             onClick: () => {
-                                const current = darkModeColors[c];
-                                if (current) {
+                                if (isOverridden) {
                                     // revert
                                     const copy = { ...darkModeColors };
                                     delete copy[c];
@@ -968,7 +968,7 @@ const App = () => {
                                     }
                                 }
                             }
-                        }, current ? 'Revert' : 'Toggle Override'),
+                        }, isOverridden ? 'Revert' : 'Toggle Override'),
                          h('div', { style: 'margin-left:auto; display:flex; gap:2px; align-items:center;' }, [
                             // Light Mode
                             h('div', { 
