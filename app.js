@@ -288,6 +288,8 @@ const App = () => {
     const [colors, setColors] = useState([]); // [{ hex: '#...', isText: bool, isLarge: bool, count: num }]
     const [darkModeColors, setDarkModeColors] = useState({});
     const [prevOverrides, setPrevOverrides] = useState({}); // store previous override for revert
+    const [elementOverrides, setElementOverrides] = useState({}); // data-a11y-id -> color
+    const [elementMap, setElementMap] = useState({}); // data-a11y-id -> { orig, attr, isText, isLarge }
     const [a11yStatus, setA11yStatus] = useState('');
     const [currentFileName, setCurrentFileName] = useState('');
     const [contrastMode, setContrastMode] = useState('wcag'); // 'wcag' or 'apca'
@@ -463,7 +465,19 @@ const App = () => {
             const allEls = svgEl.querySelectorAll('*');
             const uniqueC = new Set();
             const colorMap = new Map(); // hex -> var name
-
+            // Annotate elements with data-a11y-id so we can target them individually
+            const tempElementMap = {};
+            let a11yCounter = 0;
+            allEls.forEach(el => {
+                if (el.hasAttribute('fill') || el.hasAttribute('stroke')) {
+                    const id = `a11y-${a11yCounter++}`;
+                    el.setAttribute('data-a11y-id', id);
+                    // Track original color(s) for this element
+                    const fill = el.getAttribute('fill');
+                    const stroke = el.getAttribute('stroke');
+                    tempElementMap[id] = { fill, stroke, isText: isTextElement(el), isLarge: isTextElement(el) ? isLargeText(el) : false };
+                }
+            });
             allEls.forEach(el => {
                 ['fill', 'stroke'].forEach(attr => {
                     const val = el.getAttribute(attr);
@@ -472,7 +486,11 @@ const App = () => {
                         uniqueC.add(lowerVal);
 
                         // Apply any user-specified dark mode / override mapping
-                        if (darkModeColors[lowerVal]) {
+                        // First apply element-specific override if present
+                        const id = el.getAttribute('data-a11y-id');
+                        if (id && elementOverrides[id] && elementOverrides[id][attr]) {
+                            el.setAttribute(attr, elementOverrides[id][attr]);
+                        } else if (darkModeColors[lowerVal]) {
                             el.setAttribute(attr, darkModeColors[lowerVal]);
                         } else if (options.useCurrentColor) {
                             el.setAttribute(attr, 'currentColor');
@@ -483,6 +501,9 @@ const App = () => {
                     }
                 });
             });
+
+            // Save element map state for UI reference
+            setElementMap(tempElementMap);
 
             // Inject CSS Variables style block if enabled
             if (options.useCssVars && colorMap.size > 0) {
@@ -668,6 +689,8 @@ const App = () => {
         try {
             const saved = JSON.parse(localStorage.getItem('darkModeColors') || '{}');
             setDarkModeColors(saved);
+            const savedElem = JSON.parse(localStorage.getItem('elementOverrides') || '{}');
+            setElementOverrides(savedElem);
         } catch (e) {
             // ignore
         }
@@ -681,6 +704,7 @@ const App = () => {
     useEffect(() => {
         try {
             localStorage.setItem('darkModeColors', JSON.stringify(darkModeColors || {}));
+            localStorage.setItem('elementOverrides', JSON.stringify(elementOverrides || {}));
             localStorage.setItem('previewSplit', String(previewSplit));
             localStorage.setItem('filterTextOnly', filterTextOnly ? 'true' : 'false');
         } catch (e) {
@@ -936,36 +960,59 @@ const App = () => {
                                value: darkModeColors[c] || '',
                                onInput: (e) => setDarkModeColors({ ...darkModeColors, [c]: e.target.value })
                         }),
-                        // Single Toggle Override: apply suggested accessible color (or revert if already applied)
-                        h('button', { 
+                        // A11y button: apply per-element accessible fixes
+                        h('button', {
+                            class: 'small secondary',
+                            style: 'margin-left:6px;',
+                            title: 'Apply per-element accessible fix for problematic uses of this color',
+                            onClick: () => {
+                                // Find elements using this color and apply elementOverrides per-element
+                                // Build a copy and apply suggestions only to elements that fail contrast in light or dark
+                                const newElem = { ...elementOverrides };
+                                Object.entries(elementMap).forEach(([id, info]) => {
+                                    // Determine which attr (fill/stroke) matches this base color
+                                    ['fill', 'stroke'].forEach(attr => {
+                                        const val = info[attr];
+                                        if (!val) return;
+                                        if (val.toLowerCase() === c.toLowerCase()) {
+                                            // compute if this element fails contrast against light OR dark
+                                            const testColor = val.toLowerCase();
+                                            const lightFail = (contrastMode === 'wcag') ? getWCAGLevel(getContrastRatio(testColor, bgLight), info.isText, info.isLarge) === 'Fail' : getAPCALevel(getAPCAContrast(testColor, bgLight)) === 'Fail';
+                                            const darkFail = (contrastMode === 'wcag') ? getWCAGLevel(getContrastRatio(testColor, bgDark), info.isText, info.isLarge) === 'Fail' : getAPCALevel(getAPCAContrast(testColor, bgDark)) === 'Fail';
+                                            if (lightFail || darkFail) {
+                                                // suggest a color targeted to this element (consider backgrounds)
+                                                const suggested = suggestAccessibleColor(testColor, lightFail ? bgLight : bgDark, darkFail ? bgDark : bgLight, info.isText, contrastMode);
+                                                if (!newElem[id]) newElem[id] = {};
+                                                newElem[id][attr] = suggested;
+                                            }
+                                        }
+                                    });
+                                });
+                                setElementOverrides(newElem);
+                                setA11yStatus('Applied per-element suggestions');
+                                setTimeout(() => setA11yStatus(''), 1400);
+                            }
+                        }, 'A11y'),
+
+                        // Quick Toggle: apply/revert a color-level override (keeps older behavior)
+                        h('button', {
                             class: 'small',
                             style: 'margin-left:6px;',
-                            title: 'Apply or revert an accessible override',
+                            title: 'Quick toggle color-level override (fallback if needed)',
                             onClick: () => {
                                 if (isOverridden) {
-                                    // revert
                                     const copy = { ...darkModeColors };
                                     delete copy[c];
                                     setDarkModeColors(copy);
-                                    // keep prevOverrides for possible re-apply
                                     setA11yStatus(`Reverted override for ${c}`);
-                                    setTimeout(() => setA11yStatus(''), 1200);
+                                    setTimeout(() => setA11yStatus(''), 900);
                                 } else {
-                                    // compute suggestion and apply
                                     const suggested = suggestAccessibleColor(c, bgLight, bgDark, isText, contrastMode);
-                                    if (suggested && suggested !== c) {
-                                        setPrevOverrides({ ...prevOverrides, [c]: null });
-                                        setDarkModeColors({ ...darkModeColors, [c]: suggested });
-                                        setA11yStatus(`Applied suggestion ${suggested} for ${c}`);
-                                        setTimeout(() => setA11yStatus(''), 1600);
-                                    } else {
-                                        // Fallback quick swap (black or white)
-                                        const fallback = isText ? '#000000' : '#ffffff';
-                                        setPrevOverrides({ ...prevOverrides, [c]: null });
-                                        setDarkModeColors({ ...darkModeColors, [c]: fallback });
-                                        setA11yStatus(`Applied fallback ${fallback} for ${c}`);
-                                        setTimeout(() => setA11yStatus(''), 1600);
-                                    }
+                                    const fallback = suggested && suggested !== c ? suggested : (isText ? '#000000' : '#ffffff');
+                                    setPrevOverrides({ ...prevOverrides, [c]: null });
+                                    setDarkModeColors({ ...darkModeColors, [c]: fallback });
+                                    setA11yStatus(`Applied quick override ${fallback} for ${c}`);
+                                    setTimeout(() => setA11yStatus(''), 1200);
                                 }
                             }
                         }, isOverridden ? 'Revert' : 'Toggle Override'),
