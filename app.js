@@ -718,10 +718,20 @@ const App = () => {
         }
     }, [svgInput, intent, meta, options, darkModeColors]);
 
+    // Re-run optimization when elementOverrides change so previews + badges update
     useEffect(() => {
-        if(svgInput) {
-                const foundColors = parseColors(svgInput);
-                setColors(foundColors);
+        if (svgInput && intent) {
+            handleOptimize();
+        }
+    }, [elementOverrides]);
+
+    useEffect(() => {
+        if (processedSvg && processedSvg.code) {
+            const foundColors = parseColors(processedSvg.code);
+            setColors(foundColors);
+        } else if (svgInput) {
+            const foundColors = parseColors(svgInput);
+            setColors(foundColors);
         }
     }, [svgInput]);
 
@@ -960,8 +970,8 @@ const App = () => {
                                value: darkModeColors[c] || '',
                                onInput: (e) => setDarkModeColors({ ...darkModeColors, [c]: e.target.value })
                         }),
-                        // A11y button: apply per-element accessible fixes
-                        h('button', {
+                        // A11y button: apply per-element accessible fixes (only if failing in either light or dark)
+                        ( (contrastMode === 'wcag' ? (lightLevel === 'Fail' || darkLevel === 'Fail') : (Math.abs(getAPCAContrast(c, bgLight)) < 60 || Math.abs(getAPCAContrast(c, bgDark)) < 60)) ) && h('button', {
                             class: 'small secondary',
                             style: 'margin-left:6px;',
                             title: 'Apply per-element accessible fix for problematic uses of this color',
