@@ -157,6 +157,7 @@ const App = () => {
     const [bgLight, setBgLight] = useState('#ffffff');
     const [bgDark, setBgDark] = useState('#121212');
     const [showTextAsNonText, setShowTextAsNonText] = useState(false);
+    const [filterTextOnly, setFilterTextOnly] = useState(false);
     const [previewSplit, setPreviewSplit] = useState(50); // 50/50 split percentage
     const previewContainerRef = useRef(null);
     const isResizingRef = useRef(false);
@@ -705,6 +706,10 @@ const App = () => {
                     }),
                     ' Override: Treat text as graphics'
                 ]),
+                h('label', { class: 'radio-item', style: 'font-size: 0.8rem;' }, [
+                    h('input', { type: 'checkbox', checked: filterTextOnly, onChange: (e) => setFilterTextOnly(e.target.checked), style: 'margin:0;' }),
+                    ' Show only text colors'
+                ]),
                 
                 // Background Color Configuration
                 h('div', { style: 'margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border);' }, [
@@ -735,7 +740,7 @@ const App = () => {
                     ])
                 ]),
                 
-                h('div', { class: 'color-list' }, colors.map(colorInfo => {
+                h('div', { class: 'color-list' }, colors.filter(ci => !filterTextOnly || ci.isText).map(colorInfo => {
                     const c = colorInfo.hex;
                     const isText = colorInfo.isText && !showTextAsNonText;
                     const isLarge = colorInfo.isLarge;
@@ -760,7 +765,7 @@ const App = () => {
                              title: `${c} (${colorInfo.isText ? 'text' : 'graphic'}${colorInfo.isLarge ? ', large' : ''})`
                          }),
                          h('code', { style: 'font-size:0.75rem;' }, c),
-                         h('span', { style: 'font-size: 0.65rem; color: #666;' }, `(${colorInfo.isText ? 'T' : 'G'}${colorInfo.isLarge ? 'L' : ''})`),
+                         h('span', { style: `font-size: 0.65rem; color: #666; font-weight: ${colorInfo.isText ? 700 : 400};` }, `(${colorInfo.isText ? 'T' : 'G'}${colorInfo.isLarge ? 'L' : ''})`),
                         options.injectDarkMode && h('input', { 
                                type: 'color', 
                                style: 'width:20px; height:20px; padding:0; border:none; background:none; cursor: pointer;',
