@@ -468,13 +468,27 @@ const App = () => {
             // Annotate elements with data-a11y-id so we can target them individually
             const tempElementMap = {};
             let a11yCounter = 0;
+            // Determine preview container computed colors for currentColor resolution
+            const previewLightColor = '#000000'; // .preview-light color from CSS
+            const previewDarkColor = '#ffffff'; // .preview-dark color from CSS
+
             allEls.forEach(el => {
                 if (el.hasAttribute('fill') || el.hasAttribute('stroke')) {
                     const id = `a11y-${a11yCounter++}`;
                     el.setAttribute('data-a11y-id', id);
-                    // Track original color(s) for this element
-                    const fill = el.getAttribute('fill');
-                    const stroke = el.getAttribute('stroke');
+                    // Track original color(s for both previews) for this element
+                    let fill = el.getAttribute('fill');
+                    let stroke = el.getAttribute('stroke');
+
+                    // Resolve currentColor for text-like elements
+                    if (fill && fill === 'currentColor') {
+                        // store placeholder — actual decision per-preview later
+                        fill = { current: true, light: previewLightColor, dark: previewDarkColor };
+                    }
+                    if (stroke && stroke === 'currentColor') {
+                        stroke = { current: true, light: previewLightColor, dark: previewDarkColor };
+                    }
+
                     tempElementMap[id] = { fill, stroke, isText: isTextElement(el), isLarge: isTextElement(el) ? isLargeText(el) : false };
                 }
             });
@@ -987,16 +1001,34 @@ const App = () => {
                                     ['fill', 'stroke'].forEach(attr => {
                                         const val = info[attr];
                                         if (!val) return;
-                                        if (val.toLowerCase() === c.toLowerCase()) {
-                                            // compute if this element fails contrast against light OR dark
-                                            const testColor = val.toLowerCase();
-                                            const lightFail = (contrastMode === 'wcag') ? getWCAGLevel(getContrastRatio(testColor, bgLight), info.isText, info.isLarge) === 'Fail' : getAPCALevel(getAPCAContrast(testColor, bgLight)) === 'Fail';
-                                            const darkFail = (contrastMode === 'wcag') ? getWCAGLevel(getContrastRatio(testColor, bgDark), info.isText, info.isLarge) === 'Fail' : getAPCALevel(getAPCAContrast(testColor, bgDark)) === 'Fail';
+
+                                        // Resolve value: if currentColor placeholder, evaluate per preview
+                                        const matchesBaseColor = (v) => {
+                                            try { return v.toLowerCase() === c.toLowerCase(); } catch(e){ return false; }
+                                        };
+
+                                        // If this element uses currentColor, check both light and dark resolved colors
+                                        if (typeof val === 'object' && val.current) {
+                                            const testLight = val.light;
+                                            const testDark = val.dark;
+                                            const lightFail = (contrastMode === 'wcag') ? getWCAGLevel(getContrastRatio(testLight, bgLight), info.isText, info.isLarge) === 'Fail' : getAPCALevel(getAPCAContrast(testLight, bgLight)) === 'Fail';
+                                            const darkFail = (contrastMode === 'wcag') ? getWCAGLevel(getContrastRatio(testDark, bgDark), info.isText, info.isLarge) === 'Fail' : getAPCALevel(getAPCAContrast(testDark, bgDark)) === 'Fail';
                                             if (lightFail || darkFail) {
-                                                // suggest a color targeted to this element (consider backgrounds)
-                                                const suggested = suggestAccessibleColor(testColor, lightFail ? bgLight : bgDark, darkFail ? bgDark : bgLight, info.isText, contrastMode);
+                                                const suggested = suggestAccessibleColor(testLight if lightFail else testDark, bgLight, bgDark, info.isText, contrastMode);
                                                 if (!newElem[id]) newElem[id] = {};
                                                 newElem[id][attr] = suggested;
+                                            }
+                                        } else {
+                                            const sval = val.toLowerCase();
+                                            if (sval === c.toLowerCase()) {
+                                                const testColor = sval;
+                                                const lightFail = (contrastMode === 'wcag') ? getWCAGLevel(getContrastRatio(testColor, bgLight), info.isText, info.isLarge) === 'Fail' : getAPCALevel(getAPCAContrast(testColor, bgLight)) === 'Fail';
+                                                const darkFail = (contrastMode === 'wcag') ? getWCAGLevel(getContrastRatio(testColor, bgDark), info.isText, info.isLarge) === 'Fail' : getAPCALevel(getAPCAContrast(testColor, bgDark)) === 'Fail';
+                                                if (lightFail || darkFail) {
+                                                    const suggested = suggestAccessibleColor(testColor, lightFail ? bgLight : bgDark, darkFail ? bgDark : bgLight, info.isText, contrastMode);
+                                                    if (!newElem[id]) newElem[id] = {};
+                                                    newElem[id][attr] = suggested;
+                                                }
                                             }
                                         }
                                     });
