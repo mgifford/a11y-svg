@@ -1014,7 +1014,7 @@ const App = () => {
                                             const lightFail = (contrastMode === 'wcag') ? getWCAGLevel(getContrastRatio(testLight, bgLight), info.isText, info.isLarge) === 'Fail' : getAPCALevel(getAPCAContrast(testLight, bgLight)) === 'Fail';
                                             const darkFail = (contrastMode === 'wcag') ? getWCAGLevel(getContrastRatio(testDark, bgDark), info.isText, info.isLarge) === 'Fail' : getAPCALevel(getAPCAContrast(testDark, bgDark)) === 'Fail';
                                             if (lightFail || darkFail) {
-                                                const suggested = suggestAccessibleColor(testLight if lightFail else testDark, bgLight, bgDark, info.isText, contrastMode);
+                                                const suggested = suggestAccessibleColor(lightFail ? testLight : testDark, bgLight, bgDark, info.isText, contrastMode);
                                                 if (!newElem[id]) newElem[id] = {};
                                                 newElem[id][attr] = suggested;
                                             }
