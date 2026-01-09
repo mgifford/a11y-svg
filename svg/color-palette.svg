@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <title>Color Palette</title>
+  <desc>A colorful palette with text labels demonstrating contrast and color variety</desc>
+  
+  <!-- Background -->
+  <rect width="200" height="200" fill="currentColor" opacity="0.05"/>
+  
+  <!-- Color swatches in a grid -->
+  <g id="palette">
+    <!-- Red -->
+    <rect x="10" y="10" width="30" height="30" fill="#e63946"/>
+    <text x="45" y="30" font-size="12" font-weight="bold" fill="#e63946">Red</text>
+    
+    <!-- Orange -->
+    <rect x="10" y="50" width="30" height="30" fill="#f77f00"/>
+    <text x="45" y="70" font-size="12" font-weight="bold" fill="#f77f00">Orange</text>
+    
+    <!-- Yellow -->
+    <rect x="10" y="90" width="30" height="30" fill="#fcbf49"/>
+    <text x="45" y="110" font-size="12" font-weight="bold" fill="#1a1a1a">Yellow</text>
+    
+    <!-- Green -->
+    <rect x="10" y="130" width="30" height="30" fill="#06d6a0"/>
+    <text x="45" y="150" font-size="12" font-weight="bold" fill="#06d6a0">Green</text>
+    
+    <!-- Blue -->
+    <rect x="100" y="10" width="30" height="30" fill="#118ab2"/>
+    <text x="135" y="30" font-size="12" font-weight="bold" fill="#118ab2">Blue</text>
+    
+    <!-- Purple -->
+    <rect x="100" y="50" width="30" height="30" fill="#7b2cbf"/>
+    <text x="135" y="70" font-size="12" font-weight="bold" fill="#7b2cbf">Purple</text>
+    
+    <!-- Pink -->
+    <rect x="100" y="90" width="30" height="30" fill="#e0aaff"/>
+    <text x="135" y="110" font-size="12" font-weight="bold" fill="#1a1a1a">Pink</text>
+    
+    <!-- Teal -->
+    <rect x="100" y="130" width="30" height="30" fill="#073b4c"/>
+    <text x="135" y="150" font-size="12" font-weight="bold" fill="#ffffff">Teal</text>
+  </g>
+</svg>

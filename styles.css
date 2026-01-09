@@ -260,9 +260,13 @@ button.small {
     border-radius: 4px;
     font-weight: bold;
     display: inline-block;
+    min-width: 2.5rem;
+    text-align: center;
 }
 .pass { background-color: var(--success); color: white; }
 .fail { background-color: var(--error); color: white; }
+.aa { background-color: #1976d2; color: white; }
+.aaa { background-color: #00897b; color: white; }
 
 dialog {
     border: 1px solid var(--border);

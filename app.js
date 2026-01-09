@@ -8,6 +8,7 @@ function generateId(prefix = 'id') {
     return `${prefix}-${Math.random().toString(36).substr(2, 9)}`;
 }
 
+// ===== WCAG 2.2 CONTRAST RATIO (Relative Luminance Method) =====
 function getContrastRatio(hex1, hex2) {
     const lum1 = getLuminance(hex1);
     const lum2 = getLuminance(hex2);
@@ -29,6 +30,109 @@ function getLuminance(hex) {
     return 0.2126 * sr + 0.7152 * sg + 0.0722 * sb;
 }
 
+// ===== APCA CONTRAST (Accessible Perceptual Contrast Algorithm) =====
+// More perceptually accurate than WCAG 2.2, used in WCAG 3.0 (draft)
+// Returns Lc (Lightness Contrast) value
+function getAPCAContrast(hex1, hex2) {
+    const y1 = getRelativeLuminanceAPCA(hex1);
+    const y2 = getRelativeLuminanceAPCA(hex2);
+    
+    const lighter = Math.max(y1, y2);
+    const darker = Math.min(y1, y2);
+    
+    // APCA formula: (lighter - darker) * 0.37
+    const lc = (lighter - darker) * 0.37;
+    
+    // Return signed value: positive if hex1 is lighter, negative if darker
+    return y1 > y2 ? Math.abs(lc) : -Math.abs(lc);
+}
+
+function getRelativeLuminanceAPCA(hex) {
+    const rgb = parseInt(hex.slice(1), 16);
+    const r = (rgb >> 16) & 0xff;
+    const g = (rgb >>  8) & 0xff;
+    const b = (rgb >>  0) & 0xff;
+    
+    const [sr, sg, sb] = [r, g, b].map(c => {
+        c /= 255;
+        return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    });
+    
+    // APCA uses BT.2020 coefficients (more accurate than WCAG 2.2)
+    return 0.2126 * sr + 0.7152 * sg + 0.0722 * sb;
+}
+
+// Helper: Detect if an element contains text
+function isTextElement(element) {
+    const tagName = element.tagName.toLowerCase();
+    // Direct text elements
+    if (tagName === 'text' || tagName === 'tspan') return true;
+    
+    // Check if element contains text nodes or has text content
+    if (element.childNodes.length > 0) {
+        for (let node of element.childNodes) {
+            if (node.nodeType === 3 && node.textContent.trim().length > 0) return true; // Text node
+            if (node.nodeType === 1 && isTextElement(node)) return true; // Recursive check
+        }
+    }
+    return false;
+}
+
+// Helper: Get font size from element (in pixels)
+function getFontSize(element) {
+    const style = window.getComputedStyle ? window.getComputedStyle(element) : null;
+    if (style && style.fontSize) {
+        const size = parseFloat(style.fontSize);
+        return size;
+    }
+    
+    // Fallback: check font-size attribute
+    const sizeAttr = element.getAttribute('font-size');
+    if (sizeAttr) {
+        return parseFloat(sizeAttr);
+    }
+    
+    return 12; // Default
+}
+
+// Helper: Is text large (18pt or 14pt bold)
+function isLargeText(element) {
+    const fontSize = getFontSize(element);
+    const fontWeight = element.getAttribute('font-weight') || '';
+    const isBold = fontWeight === 'bold' || parseInt(fontWeight) >= 700;
+    
+    // 18pt = ~24px, 14pt = ~18.67px
+    return (fontSize >= 24) || (fontSize >= 18 && isBold);
+}
+
+// Helper: Get APCA level (based on Lc value)
+// APCA levels (absolute value): 90+ AAA, 75+ AA, 60+ Fail
+function getAPCALevel(lc) {
+    const absLc = Math.abs(lc);
+    if (absLc >= 90) return 'AAA';
+    if (absLc >= 75) return 'AA';
+    return 'Fail';
+}
+
+// Helper: Get WCAG 2.2 AA level (text vs non-text)
+function getWCAGLevel(ratio, isText = false, isLarge = false) {
+    if (isText) {
+        // Text: 4.5:1 = AA, 7:1 = AAA (normal)
+        // Large text: 3:1 = AA, 4.5:1 = AAA
+        const aaThreshold = isLarge ? 3 : 4.5;
+        const aaaThreshold = isLarge ? 4.5 : 7;
+        
+        if (ratio >= aaaThreshold) return 'AAA';
+        if (ratio >= aaThreshold) return 'AA';
+        return 'Fail';
+    } else {
+        // Non-text (graphics, UI): 3:1 = AA, 4.5:1 = AAA
+        if (ratio >= 4.5) return 'AAA';
+        if (ratio >= 3) return 'AA';
+        return 'Fail';
+    }
+}
+
 // --- Components ---
 
 const App = () => {
@@ -45,10 +149,14 @@ const App = () => {
         injectDarkMode: false,
         useCssVars: false
     });
-    const [colors, setColors] = useState([]); // [{ hex: '#...', refs: [Element...] }]
+    const [colors, setColors] = useState([]); // [{ hex: '#...', isText: bool, isLarge: bool, count: num }]
     const [darkModeColors, setDarkModeColors] = useState({});
     const [a11yStatus, setA11yStatus] = useState('');
     const [currentFileName, setCurrentFileName] = useState('');
+    const [contrastMode, setContrastMode] = useState('wcag'); // 'wcag' or 'apca'
+    const [bgLight, setBgLight] = useState('#ffffff');
+    const [bgDark, setBgDark] = useState('#121212');
+    const [showTextAsNonText, setShowTextAsNonText] = useState(false);
 
     // --- Helpers ---
 
@@ -81,18 +189,31 @@ const App = () => {
     const parseColors = (svgString) => {
         const parser = new DOMParser();
         const doc = parser.parseFromString(svgString, 'image/svg+xml');
-        const uniqueColors = new Set();
+        const colorMap = new Map(); // hex -> { isText, isLarge, count }
         const elements = doc.querySelectorAll('*');
         
         elements.forEach(el => {
+            const isText = isTextElement(el);
+            const isLarge = isText ? isLargeText(el) : false;
+            
             ['fill', 'stroke'].forEach(attr => {
                 const val = el.getAttribute(attr);
                 if (val && val.startsWith('#')) {
-                    uniqueColors.add(val.toLowerCase());
+                    const hex = val.toLowerCase();
+                    if (colorMap.has(hex)) {
+                        const info = colorMap.get(hex);
+                        info.count++;
+                        // Mark as text if ANY element using this color is text
+                        if (isText) info.isText = true;
+                        if (isLarge) info.isLarge = true;
+                    } else {
+                        colorMap.set(hex, { hex, isText, isLarge, count: 1 });
+                    }
                 }
             });
         });
-        return Array.from(uniqueColors);
+        
+        return Array.from(colorMap.values());
     };
 
     const handleOptimize = async () => {
@@ -516,25 +637,112 @@ const App = () => {
                 ])
             ]),
 
-            // 3. Colors
+            // 3. Colors & Contrast
             colors.length > 0 && h('div', { class: 'sidebar-section' }, [
                 h('span', { class: 'sidebar-label' }, `Colors (${colors.length})`),
-                h('div', { class: 'color-list' }, colors.map(c => {
-                    const ratio = getContrastRatio(c, '#ffffff');
-                    const ratioDark = getContrastRatio(c, '#121212');
+                
+                // Contrast Mode Selector
+                h('div', { style: 'margin-bottom: 0.5rem; display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;' }, [
+                    h('label', { class: 'radio-item', style: 'margin: 0;' }, [
+                        h('input', { type: 'radio', name: 'contrast-mode', checked: contrastMode === 'wcag', onChange: () => setContrastMode('wcag'), style: 'margin: 0;' }),
+                        'WCAG'
+                    ]),
+                    h('label', { class: 'radio-item', style: 'margin: 0;' }, [
+                        h('input', { type: 'radio', name: 'contrast-mode', checked: contrastMode === 'apca', onChange: () => setContrastMode('apca'), style: 'margin: 0;' }),
+                        'APCA'
+                    ])
+                ]),
+                
+                // Text Evaluation Option
+                h('label', { class: 'radio-item', style: 'font-size: 0.8rem;' }, [
+                    h('input', { 
+                        type: 'checkbox',
+                        checked: showTextAsNonText,
+                        onChange: (e) => setShowTextAsNonText(e.target.checked),
+                        style: 'margin: 0;'
+                    }),
+                    ' Override: Treat text as graphics'
+                ]),
+                
+                // Background Color Configuration
+                h('div', { style: 'margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border);' }, [
+                    h('div', { style: 'font-size: 0.75rem; font-weight: bold; margin-bottom: 0.3rem;' }, 'Test Backgrounds'),
+                    
+                    h('div', { style: 'display: flex; gap: 0.3rem; align-items: center; margin-bottom: 0.3rem;' }, [
+                        h('label', { style: 'font-size: 0.75rem;' }, 'Light:'),
+                        h('input', { 
+                            type: 'color',
+                            value: bgLight,
+                            onChange: (e) => setBgLight(e.target.value),
+                            title: 'Light mode background color',
+                            style: 'width: 24px; height: 24px; padding: 0; border: 1px solid #ccc; cursor: pointer;'
+                        }),
+                        h('code', { style: 'font-size: 0.65rem;' }, bgLight)
+                    ]),
+                    
+                    h('div', { style: 'display: flex; gap: 0.3rem; align-items: center;' }, [
+                        h('label', { style: 'font-size: 0.75rem;' }, 'Dark:'),
+                        h('input', { 
+                            type: 'color',
+                            value: bgDark,
+                            onChange: (e) => setBgDark(e.target.value),
+                            title: 'Dark mode background color',
+                            style: 'width: 24px; height: 24px; padding: 0; border: 1px solid #ccc; cursor: pointer;'
+                        }),
+                        h('code', { style: 'font-size: 0.65rem;' }, bgDark)
+                    ])
+                ]),
+                
+                h('div', { class: 'color-list' }, colors.map(colorInfo => {
+                    const c = colorInfo.hex;
+                    const isText = colorInfo.isText && !showTextAsNonText;
+                    const isLarge = colorInfo.isLarge;
+                    
+                    let lightRatio, darkRatio, lightLc, darkLc, lightLevel, darkLevel;
+                    
+                    if (contrastMode === 'wcag') {
+                        lightRatio = getContrastRatio(c, bgLight);
+                        darkRatio = getContrastRatio(c, bgDark);
+                        lightLevel = getWCAGLevel(lightRatio, isText, isLarge);
+                        darkLevel = getWCAGLevel(darkRatio, isText, isLarge);
+                    } else {
+                        lightLc = getAPCAContrast(c, bgLight);
+                        darkLc = getAPCAContrast(c, bgDark);
+                        lightLevel = getAPCALevel(lightLc);
+                        darkLevel = getAPCALevel(darkLc);
+                    }
                     
                     return h('div', { class: 'color-item' }, [
-                         h('div', { style: `width:16px; height:16px; background:${c}; border:1px solid #ccc; flex-shrink:0;` }),
+                         h('div', { 
+                             style: `width:16px; height:16px; background:${c}; border:1px solid #ccc; flex-shrink:0; border-radius: 2px;`,
+                             title: `${c} (${colorInfo.isText ? 'text' : 'graphic'}${colorInfo.isLarge ? ', large' : ''})`
+                         }),
                          h('code', { style: 'font-size:0.75rem;' }, c),
+                         h('span', { style: 'font-size: 0.65rem; color: #666;' }, `(${colorInfo.isText ? 'T' : 'G'}${colorInfo.isLarge ? 'L' : ''})`),
                          options.injectDarkMode && h('input', { 
                                 type: 'color', 
                                 style: 'width:20px; height:20px; padding:0; border:none; background:none;',
-                                title: 'Dark mode color',
+                                title: 'Dark mode color override',
                                 onChange: (e) => setDarkModeColors({ ...darkModeColors, [c]: e.target.value })
                          }),
-                         h('div', { style: 'margin-left:auto; display:flex; gap:2px;' }, [
-                            h('span', { class: `contrast-badge ${ratio >= 4.5 ? 'pass' : 'fail'}`, title: `Light: ${ratio.toFixed(2)}` }, 'L'),
-                            h('span', { class: `contrast-badge ${ratioDark >= 4.5 ? 'pass' : 'fail'}`, title: `Dark: ${ratioDark.toFixed(2)}` }, 'D')
+                         h('div', { style: 'margin-left:auto; display:flex; gap:2px; align-items:center;' }, [
+                            // Light Mode
+                            h('div', { 
+                                class: `contrast-badge ${lightLevel === 'Fail' ? 'fail' : lightLevel === 'AAA' ? 'aaa' : 'aa'}`,
+                                title: contrastMode === 'wcag' 
+                                    ? `Light: ${lightRatio.toFixed(2)}:1 (need ${isText ? isLarge ? '3:1' : '4.5:1' : '3:1'})` 
+                                    : `Light: ${lightLc.toFixed(1)} Lc (need ${isText ? '75+' : '60+'} Lc)`
+                            }, 
+                            contrastMode === 'wcag' ? lightRatio.toFixed(1) : lightLc.toFixed(0)),
+                            
+                            // Dark Mode
+                            h('div', { 
+                                class: `contrast-badge ${darkLevel === 'Fail' ? 'fail' : darkLevel === 'AAA' ? 'aaa' : 'aa'}`,
+                                title: contrastMode === 'wcag'
+                                    ? `Dark: ${darkRatio.toFixed(2)}:1 (need ${isText ? isLarge ? '3:1' : '4.5:1' : '3:1'})`
+                                    : `Dark: ${darkLc.toFixed(1)} Lc (need ${isText ? '75+' : '60+'} Lc)`
+                            }, 
+                            contrastMode === 'wcag' ? darkRatio.toFixed(1) : darkLc.toFixed(0))
                         ])
                     ]);
                 }))
