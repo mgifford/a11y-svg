@@ -213,55 +213,15 @@ const App = () => {
                         if (isLarge) info.isLarge = true;
                     } else {
                         colorMap.set(hex, { hex, isText, isLarge, count: 1 });
-                    }
-                }
-            });
-        });
-        
-        return Array.from(colorMap.values());
-    };
-
-    const handleOptimize = async () => {
-        setA11yStatus(`Processing SVG... ${new Date().toLocaleTimeString()}`);
-        
-        try {
-            if (!svgInput) return;
-
-            let svgCode = svgInput;
-
-            // 1. SVGO Optimization (Safe config with a11y preservation)
-            try {
-                const result = optimize(svgCode, {
-                    plugins: [
-                        {
-                            name: 'preset-default',
-                            params: {
-                                overrides: {
-                                    // Preserve accessibility attributes
-                                    removeViewBox: false,
-                                    removeTitle: false,
-                                    removeDesc: false
-                                }
-                            }
-                        },
-                        'removeDimensions',
-                        {
-                            name: 'removeAttrs',
-                            params: { 
-                                attrs: '(data-.*)',
-                                // Preserve all ARIA and accessibility attributes
-                                preserveCurrentColor: true
-                            } 
-                        }
-                    ]
-                });
-                if (result.data) svgCode = result.data;
-            } catch (optErr) {
                 console.warn('SVGO Optimization failed, using raw input:', optErr);
                 // Continue with raw SVG if optimization fails
             }
+                // --- Effects ---
+    
+                useEffect(() => {
+                    fetchRandomSvg();
+                }, []);
             
-            let doc = new DOMParser().parseFromString(svgCode, 'image/svg+xml');
             let svgEl = doc.querySelector('svg');
 
             if (!svgEl) throw new Error("Invalid SVG: Could not parse <svg> element.");
@@ -821,7 +781,7 @@ const App = () => {
                     ])
                 ]),
                 // Resizer Handle
-                h('div', { class: 'preview-resizer' })
+                h('div', { class: 'preview-resizer', onMouseDown: handleResizerMouseDown })
             ]),
 
             // Output Section
@@ -835,8 +795,31 @@ const App = () => {
                             setA11yStatus('Copied!');
                             setTimeout(() => setA11yStatus(''), 2000);
                         }
-                    }, 'Copy Code')
-                ]),
+                            const handleResizerMouseDown = (e) => {
+                                e.preventDefault();
+                                isResizingRef.current = true;
+                                const container = previewContainerRef.current;
+        
+                                const handleMouseMove = (moveEvent) => {
+                                    if (!isResizingRef.current || !container) return;
+            
+                                    const rect = container.getBoundingClientRect();
+                                    const newSplit = ((moveEvent.clientX - rect.left) / rect.width) * 100;
+            
+                                    if (newSplit >= 20 && newSplit <= 80) {
+                                        setPreviewSplit(newSplit);
+                                    }
+                                };
+        
+                                const handleMouseUp = () => {
+                                    isResizingRef.current = false;
+                                    document.removeEventListener('mousemove', handleMouseMove);
+                                    document.removeEventListener('mouseup', handleMouseUp);
+                                };
+        
+                                document.addEventListener('mousemove', handleMouseMove);
+                                document.addEventListener('mouseup', handleMouseUp);
+                            };
                 h('pre', { class: 'code-content' }, processedSvg.code)
             ]),
 
