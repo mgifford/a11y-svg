@@ -76,6 +76,7 @@ header p {
     display: flex;
     flex-direction: column;
     overflow-y: auto;
+    overflow-x: hidden;
     padding: 1rem;
     gap: 1.5rem;
     flex-shrink: 0;
@@ -121,9 +122,10 @@ textarea#svg-code {
 .preview-container {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 1rem;
+    gap: 0;
     flex: 1;
     min-height: 200px;
+    position: relative;
 }
 
 .preview-pane {
@@ -131,8 +133,40 @@ textarea#svg-code {
     flex-direction: column;
     background: var(--card-bg);
     border: 1px solid var(--border);
-    border-radius: 8px;
     overflow: hidden;
+    position: relative;
+}
+
+.preview-pane:first-child {
+    border-radius: 8px 0 0 8px;
+}
+
+.preview-pane:last-child {
+    border-radius: 0 8px 8px 0;
+}
+
+/* Resizer handle between preview panes */
+.preview-resizer {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    width: 12px;
+    height: 100%;
+    transform: translateX(-50%);
+    cursor: col-resize;
+    background: linear-gradient(90deg, transparent 0%, var(--border) 50%, transparent 100%);
+    z-index: 10;
+    user-select: none;
+}
+
+.preview-resizer:hover {
+    background: linear-gradient(90deg, transparent 0%, #005a9c 50%, transparent 100%);
+}
+
+@media (prefers-color-scheme: dark) {
+    .preview-resizer:hover {
+        background: linear-gradient(90deg, transparent 0%, #90caf9 50%, transparent 100%);
+    }
 }
 
 .preview-header {

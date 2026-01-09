@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 160">
+  <title>Color Spectrum</title>
+  <desc>Rainbow spectrum showing color progression</desc>
+  
+  <!-- Spectrum bands -->
+  <rect x="20" y="30" width="20" height="80" fill="#e63946"/>
+  <rect x="42" y="30" width="20" height="80" fill="#f77f00"/>
+  <rect x="64" y="30" width="20" height="80" fill="#fcbf49"/>
+  <rect x="86" y="30" width="20" height="80" fill="#06d6a0"/>
+  <rect x="108" y="30" width="20" height="80" fill="#118ab2"/>
+  <rect x="130" y="30" width="20" height="80" fill="#7b2cbf"/>
+  <rect x="152" y="30" width="20" height="80" fill="#d946ef"/>
+  
+  <!-- Labels -->
+  <text x="30" y="125" text-anchor="middle" font-size="8" font-weight="bold" fill="currentColor">Red</text>
+  <text x="52" y="125" text-anchor="middle" font-size="8" font-weight="bold" fill="currentColor">Orange</text>
+  <text x="74" y="125" text-anchor="middle" font-size="8" font-weight="bold" fill="#1a1a1a">Yellow</text>
+  <text x="96" y="125" text-anchor="middle" font-size="8" font-weight="bold" fill="currentColor">Green</text>
+  <text x="118" y="125" text-anchor="middle" font-size="8" font-weight="bold" fill="currentColor">Blue</text>
+  <text x="140" y="125" text-anchor="middle" font-size="8" font-weight="bold" fill="#ffffff">Purple</text>
+  <text x="162" y="125" text-anchor="middle" font-size="8" font-weight="bold" fill="#ffffff">Magenta</text>
+  
+  <!-- Title -->
+  <text x="100" y="20" text-anchor="middle" font-size="12" font-weight="bold" fill="currentColor">Rainbow Spectrum</text>
+</svg>

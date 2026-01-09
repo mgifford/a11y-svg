@@ -157,6 +157,9 @@ const App = () => {
     const [bgLight, setBgLight] = useState('#ffffff');
     const [bgDark, setBgDark] = useState('#121212');
     const [showTextAsNonText, setShowTextAsNonText] = useState(false);
+    const [previewSplit, setPreviewSplit] = useState(50); // 50/50 split percentage
+    const previewContainerRef = useRef(null);
+    const isResizingRef = useRef(false);
 
     // --- Helpers ---
 
@@ -182,6 +185,8 @@ const App = () => {
             setUserHasInteracted(true);
         }
         if (dialogRef.current) dialogRef.current.close();
+    };
+
     };
 
     // --- Parsers & Processors ---
@@ -459,6 +464,47 @@ const App = () => {
     };
 
     // --- Effects ---
+
+    // Setup resizer event handling
+    useEffect(() => {
+        const container = previewContainerRef.current;
+        if (!container) return;
+        
+        const resizer = container.querySelector('.preview-resizer');
+        if (!resizer) return;
+        
+        const handleResizerDown = (e) => {
+            e.preventDefault();
+            isResizingRef.current = true;
+            
+            const handleMove = (moveEvent) => {
+                if (!isResizingRef.current || !container) return;
+                
+                const rect = container.getBoundingClientRect();
+                const newSplit = ((moveEvent.clientX - rect.left) / rect.width) * 100;
+                
+                // Clamp between 20% and 80%
+                if (newSplit >= 20 && newSplit <= 80) {
+                    setPreviewSplit(newSplit);
+                }
+            };
+            
+            const handleUp = () => {
+                isResizingRef.current = false;
+                document.removeEventListener('mousemove', handleMove);
+                document.removeEventListener('mouseup', handleUp);
+            };
+            
+            document.addEventListener('mousemove', handleMove);
+            document.addEventListener('mouseup', handleUp);
+        };
+        
+        resizer.addEventListener('mousedown', handleResizerDown);
+        
+        return () => {
+            resizer.removeEventListener('mousedown', handleResizerDown);
+        };
+    }, []);
 
     const fetchRandomSvg = async (attemptsLeft = 3) => {
         try {
@@ -752,8 +798,8 @@ const App = () => {
         // --- Main Content ---
         h('main', { class: 'main-content' }, [
             
-            // Preview Section
-            h('div', { class: 'preview-container' }, [
+            // Preview Section with Resizer
+            h('div', { class: 'preview-container', ref: previewContainerRef, style: `display: grid; grid-template-columns: ${previewSplit}% ${100 - previewSplit}%;` }, [
                 // Light
                 h('div', { class: 'preview-pane' }, [
                     h('div', { class: 'preview-header' }, 'Light Mode'),
@@ -773,7 +819,9 @@ const App = () => {
                              dangerouslySetInnerHTML: { __html: processedSvg.dark || '' } 
                          })
                     ])
-                ])
+                ]),
+                // Resizer Handle
+                h('div', { class: 'preview-resizer' })
             ]),
 
             // Output Section
