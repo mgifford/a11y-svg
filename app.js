@@ -919,56 +919,40 @@ const App = () => {
                                value: darkModeColors[c] || '',
                                onInput: (e) => setDarkModeColors({ ...darkModeColors, [c]: e.target.value })
                         }),
-                        // Live override for this color (applies to previews)
+                        // Single Toggle Override: apply suggested accessible color (or revert if already applied)
                         h('button', { 
                             class: 'small',
                             style: 'margin-left:6px;',
+                            title: 'Apply or revert an accessible override',
                             onClick: () => {
-                                // Toggle a quick swap between this color and white/black for testing
                                 const current = darkModeColors[c];
-                                const next = current ? null : (isText ? '#000000' : '#ffffff');
-                                const copy = { ...darkModeColors };
-                                if (next) copy[c] = next; else delete copy[c];
-                                // Save previous for revert
-                                setPrevOverrides({ ...prevOverrides, [c]: current || null });
-                                setDarkModeColors(copy);
-                            }
-                        }, 'Toggle Override'),
-
-                        // Accessibility suggestion button
-                        h('button', {
-                            class: 'small secondary',
-                            style: 'margin-left:6px;',
-                            title: 'Suggest an accessible replacement',
-                            onClick: () => {
-                                const suggested = suggestAccessibleColor(c, bgLight, bgDark, isText, contrastMode);
-                                if (suggested && suggested !== c) {
-                                    setPrevOverrides({ ...prevOverrides, [c]: darkModeColors[c] || null });
-                                    setDarkModeColors({ ...darkModeColors, [c]: suggested });
-                                    setA11yStatus(`Suggested ${suggested} for ${c}`);
-                                    setTimeout(() => setA11yStatus(''), 2000);
+                                if (current) {
+                                    // revert
+                                    const copy = { ...darkModeColors };
+                                    delete copy[c];
+                                    setDarkModeColors(copy);
+                                    // keep prevOverrides for possible re-apply
+                                    setA11yStatus(`Reverted override for ${c}`);
+                                    setTimeout(() => setA11yStatus(''), 1200);
                                 } else {
-                                    setA11yStatus('No suitable suggestion found');
-                                    setTimeout(() => setA11yStatus(''), 1500);
+                                    // compute suggestion and apply
+                                    const suggested = suggestAccessibleColor(c, bgLight, bgDark, isText, contrastMode);
+                                    if (suggested && suggested !== c) {
+                                        setPrevOverrides({ ...prevOverrides, [c]: null });
+                                        setDarkModeColors({ ...darkModeColors, [c]: suggested });
+                                        setA11yStatus(`Applied suggestion ${suggested} for ${c}`);
+                                        setTimeout(() => setA11yStatus(''), 1600);
+                                    } else {
+                                        // Fallback quick swap (black or white)
+                                        const fallback = isText ? '#000000' : '#ffffff';
+                                        setPrevOverrides({ ...prevOverrides, [c]: null });
+                                        setDarkModeColors({ ...darkModeColors, [c]: fallback });
+                                        setA11yStatus(`Applied fallback ${fallback} for ${c}`);
+                                        setTimeout(() => setA11yStatus(''), 1600);
+                                    }
                                 }
                             }
-                        }, 'A11y'),
-
-                        // Revert button (if previous override exists)
-                        prevOverrides[c] && h('button', {
-                            class: 'small',
-                            style: 'margin-left:4px;',
-                            title: 'Revert previous override',
-                            onClick: () => {
-                                const prev = prevOverrides[c];
-                                const copy = { ...darkModeColors };
-                                if (prev) copy[c] = prev; else delete copy[c];
-                                setDarkModeColors(copy);
-                                const p = { ...prevOverrides };
-                                delete p[c];
-                                setPrevOverrides(p);
-                            }
-                        }, 'Revert'),
+                        }, current ? 'Revert' : 'Toggle Override'),
                          h('div', { style: 'margin-left:auto; display:flex; gap:2px; align-items:center;' }, [
                             // Light Mode
                             h('div', { 
