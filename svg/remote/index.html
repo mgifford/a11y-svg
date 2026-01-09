@@ -77,14 +77,18 @@
         try {
           const card = document.createElement('div'); card.className = 'card';
         const thumb = document.createElement('div'); thumb.className = 'thumb';
-        const img = document.createElement('img');
+        // Use <object> for SVG thumbnails so internal <style> and CSS features
+        // (color-mix(), currentColor, CSS vars) render as they do when opened
+        // directly. Fall back to <img> if object loading fails.
+        const obj = document.createElement('object');
+        obj.type = 'image/svg+xml';
+        obj.style.width = '100%'; obj.style.height = '100%'; obj.style.display = 'block';
+        obj.style.cursor = 'zoom-in';
         // prefer local filename (basename) but fall back to remote url when load fails
         const base = item.filename ? basename(item.filename) : '';
         const localSrc = base ? `./${base}` : '';
         const remoteSrc = item.url || '';
         const initialSrc = localSrc || remoteSrc || (item.filename || '');
-        img.alt = item.id ? `SVG ${item.id}` : (item.filename || 'SVG');
-        img.style.cursor = 'zoom-in';
 
         // Create action links early so setResolvedSrc can update their hrefs safely.
         const actions = document.createElement('div'); actions.style.display='flex'; actions.style.gap='0.4rem'; actions.style.marginTop='0.25rem';
@@ -97,7 +101,7 @@
         // Resolve whether the local file actually exists before choosing src.
         // Use HEAD to avoid fetching full content; fall back to remote if missing.
         const setResolvedSrc = (src) => {
-          img.src = src;
+          try { obj.data = src; } catch (e) { }
           try { openBtn.href = src; } catch (e) {}
           try { dlBtn.href = src; } catch (e) {}
         };
@@ -109,11 +113,23 @@
         } else {
           setResolvedSrc(remoteSrc || initialSrc);
         }
-        // if local file missing or fails at load time, swap to remote
-        img.onerror = () => { if (remoteSrc && img.src !== remoteSrc) setResolvedSrc(remoteSrc); };
+        // if object fails (some servers or browsers), fallback to <img>
+        obj.onerror = () => {
+          const i = document.createElement('img');
+          i.alt = item.id ? `SVG ${item.id}` : (item.filename || 'SVG');
+          i.style.maxWidth = '100%'; i.style.maxHeight = '100%'; i.style.display = 'block';
+          i.style.cursor = 'zoom-in';
+          // ensure open/download link update
+          try { i.src = obj.data || remoteSrc || initialSrc; } catch (e) { i.src = remoteSrc || initialSrc; }
+          i.onerror = () => { if (remoteSrc && i.src !== remoteSrc) i.src = remoteSrc; };
+          i.addEventListener('click', () => showOverlay(item, localSrc, remoteSrc));
+          // replace object with img fallback in the thumb
+          thumb.innerHTML = '';
+          thumb.appendChild(i);
+        };
         // clicking thumbnail opens modal zoom
-        img.addEventListener('click', () => showOverlay(item, localSrc, remoteSrc));
-        thumb.appendChild(img);
+        obj.addEventListener('click', () => showOverlay(item, localSrc, remoteSrc));
+        thumb.appendChild(obj);
         card.appendChild(thumb);
 
         const meta = document.createElement('div'); meta.className = 'meta';

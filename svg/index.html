@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>SVG Gallery (local + remote)</title>
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    body { padding: 1rem; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px,1fr)); gap: 1rem; }
+    .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem; display:flex; flex-direction:column; gap:0.5rem; align-items:center; }
+    .thumb { width: 100%; height: 160px; display:flex; align-items:center; justify-content:center; background:#fff; border-radius:4px; overflow:hidden; }
+    .thumb img, .thumb object { max-width:100%; max-height:100%; display:block; }
+    .meta { font-size:0.85rem; color:#333; text-align:center; }
+    .pager { display:flex; gap:0.5rem; align-items:center; margin-bottom:1rem; }
+    .overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: none; align-items: center; justify-content: center; z-index: 9999; }
+    .overlay .box { max-width: 95%; max-height: 95%; background: white; border-radius: 8px; padding: 0.5rem; overflow: auto; }
+    .overlay .box img, .overlay .box object { max-width: 100%; max-height: 80vh; display: block; margin: 0 auto; }
+    .overlay.show { display: flex; }
+  </style>
+</head>
+<body>
+  <header style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+    <h2 style="margin:0">SVG Gallery</h2>
+    <div>
+      <a class="small" href="/svg/index.html">Local</a>
+      <a class="small" href="/svg/remote/index.html">Remote</a>
+      <a class="small secondary" href="/index.html">Open App</a>
+    </div>
+  </header>
+  <div id="status" aria-live="polite" style="margin-bottom:0.75rem;color:#333"></div>
+
+  <div class="pager" aria-label="pagination">
+    <label>Page size: <select id="pageSize"><option>25</option><option selected>50</option><option>100</option></select></label>
+    <button id="prev" class="small">Previous</button>
+    <span id="pageInfo" style="min-width:180px; display:inline-block; text-align:center"></span>
+    <button id="next" class="small">Next</button>
+    <input id="goto" placeholder="Go to page #" style="width:6rem; margin-left:0.5rem;" />
+    <button id="goBtn" class="small secondary">Go</button>
+    <label style="margin-left:1rem">Source: <select id="sourceFilter"><option value="all">All</option><option value="local">Local</option><option value="remote">Remote</option></select></label>
+  </div>
+
+  <div id="grid" class="grid" aria-live="polite"></div>
+
+  <div id="overlay" class="overlay" role="dialog" aria-hidden="true">
+    <div class="box">
+      <button id="closeOverlay" class="small secondary" style="float:right;">Close</button>
+      <div id="overlayContent"></div>
+    </div>
+  </div>
+
+  <script>
+    const grid = document.getElementById('grid');
+    const pageInfo = document.getElementById('pageInfo');
+    const prev = document.getElementById('prev');
+    const next = document.getElementById('next');
+    const pageSizeSelect = document.getElementById('pageSize');
+    const goto = document.getElementById('goto');
+    const goBtn = document.getElementById('goBtn');
+
+    let items = [];
+    let page = 1;
+    let pageSize = parseInt(pageSizeSelect.value, 10) || 50;
+
+    function basename(p) { return p.split('/').pop(); }
+
+    function renderPage() {
+      grid.innerHTML = '';
+      const total = items.length;
+      const sourceFilter = document.getElementById('sourceFilter').value;
+      const filtered = items.filter(it => {
+        if (sourceFilter === 'all') return true;
+        return (it._source || it._origin || 'remote') === sourceFilter;
+      });
+      const pages = Math.max(1, Math.ceil(total / pageSize));
+      if (page < 1) page = 1;
+      if (page > pages) page = pages;
+      const start = (page - 1) * pageSize;
+      const slice = filtered.slice(start, start + pageSize);
+      slice.forEach(item => {
+        try {
+          const card = document.createElement('div'); card.className = 'card';
+          const thumb = document.createElement('div'); thumb.className = 'thumb';
+
+          // prefer local filename, but if the item is from remote index its filename will be basename
+          const fromRemote = !!item._source && item._source === 'remote';
+          const base = item.filename ? basename(item.filename) : '';
+          const localSrc = base ? `./${base}` : '';
+          // remote files live under /svg/remote/
+          const remoteCandidate = base ? `/svg/remote/${base}` : (item.url || '');
+          const remoteSrc = item.url || remoteCandidate || '';
+          const initialSrc = localSrc || remoteSrc || (item.filename || '');
+
+          const obj = document.createElement('object');
+          obj.type = 'image/svg+xml';
+          obj.style.width = '100%'; obj.style.height = '100%'; obj.style.display = 'block';
+          obj.style.cursor = 'zoom-in';
+
+          const actions = document.createElement('div'); actions.style.display='flex'; actions.style.gap='0.4rem'; actions.style.marginTop='0.25rem';
+          const openBtn = document.createElement('a'); openBtn.className='small'; openBtn.href = initialSrc; openBtn.target = '_blank'; openBtn.textContent = 'Open';
+          openBtn.addEventListener('click', (e) => { e.preventDefault(); showOverlay(item, localSrc, remoteSrc); });
+          const dlBtn = document.createElement('a'); dlBtn.className='small secondary'; dlBtn.href = initialSrc; dlBtn.download = ''; dlBtn.textContent = 'Download';
+          actions.appendChild(openBtn); actions.appendChild(dlBtn);
+
+          const setResolvedSrc = (src) => {
+            try { obj.data = src; } catch (e) {}
+            try { openBtn.href = src; } catch (e) {}
+            try { dlBtn.href = src; } catch (e) {}
+          };
+
+          // Try local file first (./filename). If not present, try /svg/remote/<filename>, then item.url.
+          async function resolveBest() {
+            if (localSrc) {
+              try {
+                const r = await fetch(localSrc, { method: 'HEAD', cache: 'no-store' });
+                if (r.ok) { setResolvedSrc(localSrc); return; }
+              } catch (e) {}
+            }
+            if (remoteCandidate) {
+              try {
+                const r2 = await fetch(remoteCandidate, { method: 'HEAD', cache: 'no-store' });
+                if (r2.ok) { setResolvedSrc(remoteCandidate); return; }
+              } catch (e) {}
+            }
+            setResolvedSrc(item.url || initialSrc);
+          }
+          resolveBest();
+
+          obj.onerror = () => {
+            const i = document.createElement('img');
+            i.alt = item.id ? `SVG ${item.id}` : (item.filename || 'SVG');
+            i.style.maxWidth = '100%'; i.style.maxHeight = '100%'; i.style.display = 'block';
+            i.style.cursor = 'zoom-in';
+            try { i.src = obj.data || remoteSrc || initialSrc; } catch (e) { i.src = remoteSrc || initialSrc; }
+            i.onerror = () => { if (remoteSrc && i.src !== remoteSrc) i.src = remoteSrc; };
+            i.addEventListener('click', () => showOverlay(item, localSrc, remoteSrc));
+            thumb.innerHTML = '';
+            thumb.appendChild(i);
+          };
+          obj.addEventListener('click', () => showOverlay(item, localSrc, remoteSrc));
+          thumb.appendChild(obj);
+          card.appendChild(thumb);
+
+          const meta = document.createElement('div'); meta.className = 'meta';
+          const origin = (item._source || item._origin || 'remote');
+          const badge = `<span style="display:inline-block;padding:0.15rem 0.35rem;border-radius:4px;font-size:0.72rem;margin-right:0.4rem;background:${origin==='local'? '#d1e7dd' : '#e2e3e5'};color:${origin==='local'?'#0f5132':'#41464b'}">${origin}</span>`;
+          meta.innerHTML = `<div>${badge}${item.id || ''}</div><div style="font-size:0.75rem;color:#666">${item.filename || item.url || ''}</div>`;
+          card.appendChild(meta);
+          card.appendChild(actions);
+          grid.appendChild(card);
+        } catch (err) {
+          console.error('Error rendering item', item && item.id, err);
+        }
+      });
+      pageInfo.textContent = `Showing ${start + 1}-${Math.min(start + pageSize, items.length)} of ${items.length} (page ${page}/${pages})`;
+    }
+
+    pageSizeSelect.addEventListener('change', () => { pageSize = parseInt(pageSizeSelect.value,10); page = 1; renderPage(); });
+    prev.addEventListener('click', () => { page--; renderPage(); });
+    next.addEventListener('click', () => { page++; renderPage(); });
+    goBtn.addEventListener('click', () => { const p = parseInt(goto.value,10); if (!isNaN(p)) { page = p; renderPage(); } });
+
+    async function loadIndexFiles() {
+      const statusEl = document.getElementById('status');
+      statusEl.textContent = 'Loading indices...';
+      const localIdxUrl = 'index.json';
+      const remoteIdxUrl = '/svg/remote/index.json';
+      let combined = [];
+      try {
+        const [lres, rres] = await Promise.allSettled([fetch(localIdxUrl), fetch(remoteIdxUrl)]);
+        if (lres.status === 'fulfilled' && lres.value.ok) {
+          try { const li = await lres.value.json(); (li.items||[]).forEach(it => { it._source = 'local'; combined.push(it); }); }
+          catch (e) { console.warn('local index parse failed', e); }
+        }
+        if (rres.status === 'fulfilled' && rres.value.ok) {
+          try { const ri = await rres.value.json(); (ri.items||[]).forEach(it => { it._source = 'remote'; combined.push(it); }); }
+          catch (e) { console.warn('remote index parse failed', e); }
+        }
+        if (combined.length === 0) {
+          statusEl.textContent = 'No index.json found in either /svg or /svg/remote';
+          grid.innerHTML = '<div style="grid-column:1/-1;color:#666">No index.json found in either /svg or /svg/remote. Run collector.</div>';
+          return;
+        }
+        items = combined;
+        statusEl.textContent = `Loaded ${items.length} items (merged)`;
+        renderPage();
+      } catch (err) {
+        console.error('Error loading indices', err);
+        statusEl.textContent = 'Error loading indices: ' + (err && err.message ? err.message : String(err));
+      }
+    }
+
+    loadIndexFiles();
+
+    const overlay = document.getElementById('overlay');
+    const overlayContent = document.getElementById('overlayContent');
+    const closeOverlay = document.getElementById('closeOverlay');
+    function showOverlay(item, localSrc, remoteSrc) {
+      overlayContent.innerHTML = '';
+      const src = localSrc || remoteSrc || item.url;
+      if (!src) return;
+      const obj = document.createElement('object');
+      obj.type = 'image/svg+xml';
+      obj.data = src;
+      obj.style.maxWidth = '100%';
+      obj.style.maxHeight = '80vh';
+      obj.onerror = () => {
+        const i = document.createElement('img');
+        i.src = src;
+        overlayContent.innerHTML = '';
+        overlayContent.appendChild(i);
+      };
+      overlayContent.appendChild(obj);
+      overlay.classList.add('show');
+      overlay.setAttribute('aria-hidden','false');
+    }
+    function hideOverlay() { overlay.classList.remove('show'); overlay.setAttribute('aria-hidden','true'); overlayContent.innerHTML = ''; }
+    closeOverlay.addEventListener('click', hideOverlay);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) hideOverlay(); });
+  </script>
+</body>
+</html>

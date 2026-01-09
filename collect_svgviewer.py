@@ -54,6 +54,9 @@ except Exception:
 
 OUT_DIR = os.path.join(os.path.dirname(__file__), 'svg', 'remote')
 INDEX_FILE = os.path.join(OUT_DIR, 'index.json')
+# local (curated) index in /svg
+LOCAL_DIR = os.path.join(os.path.dirname(__file__), 'svg')
+LOCAL_INDEX = os.path.join(LOCAL_DIR, 'index.json')
 os.makedirs(OUT_DIR, exist_ok=True)
 
 LICENSE_KEYWORDS = [
@@ -79,6 +82,16 @@ def load_index():
 def save_index(idx):
     with open(INDEX_FILE, 'w', encoding='utf-8') as f:
         json.dump(idx, f, indent=2)
+
+
+def save_local_index(idx):
+    # ensure svg/ exists
+    os.makedirs(LOCAL_DIR, exist_ok=True)
+    try:
+        with open(LOCAL_INDEX, 'w', encoding='utf-8') as f:
+            json.dump(idx, f, indent=2)
+    except Exception:
+        print('Warning: failed to write local index', LOCAL_INDEX)
 
 
 def looks_like_svg(text):
@@ -115,6 +128,14 @@ def collect(start=13341, limit=50, batch=25, max_checks=5000, random_mode=False,
     idx = load_index()
     known_hashes = {item.get('hash') for item in idx.get('items', [])}
     known_ids = {item.get('id') for item in idx.get('items', [])}
+    # ensure local index exists
+    try:
+        local_idx = {'items': []}
+        if os.path.exists(LOCAL_INDEX):
+            with open(LOCAL_INDEX, 'r', encoding='utf-8') as f:
+                local_idx = json.load(f)
+    except Exception:
+        local_idx = {'items': []}
 
     collected = 0
     checked = 0
@@ -216,6 +237,26 @@ def collect(start=13341, limit=50, batch=25, max_checks=5000, random_mode=False,
         known_ids.add(id_val)
         collected += 1
         print(f'  Saved to {fname} ({len(licenses)} license keywords found)')
+        # Append a lightweight local index entry so curated/validated items
+        # are visible under /svg/index.json for human review. This behavior
+        # can be suppressed with --no-local-sync.
+        try:
+            local_entry = {
+                'id': id_val,
+                'url': url,
+                'filename': fname,
+                'hash': h,
+                'licenses': licenses,
+                'collected_at': entry['collected_at'],
+                '_origin': 'remote'
+            }
+            # avoid duplicates by filename
+            existing_local_filenames = {it.get('filename') for it in local_idx.get('items', [])}
+            if fname not in existing_local_filenames:
+                local_idx.setdefault('items', []).append(local_entry)
+                save_local_index(local_idx)
+        except Exception:
+            print('Warning: failed to update local index')
         time.sleep(sleep)
 
     print(f'Done. Collected {collected} items, checked {checked} ids.')
@@ -231,6 +272,8 @@ def main():
     p.add_argument('--normalize', action='store_true', help='Normalize index entries to basenames and prune missing files')
     p.add_argument('--repair', action='store_true', help='Repair existing saved files by extracting inline SVG from HTML wrappers')
     p.add_argument('--recollect-id', type=int, default=None, help='Re-fetch a specific index id and save its SVG')
+    p.add_argument('--sync-local', action='store_true', help='Mirror remote index entries into svg/index.json for testing/validation')
+    p.add_argument('--no-local-sync', action='store_true', help="Don't auto-append collected items to svg/index.json")
     p.add_argument('--random', action='store_true')
     p.add_argument('--sleep', type=float, default=0.2)
     args = p.parse_args()
@@ -257,6 +300,26 @@ def main():
             print('Index normalized and saved.')
         else:
             print('Index already normalized.')
+        # Also scan svg/ for curated local files and write a local index.json
+        try:
+            local_items = []
+            for entry in os.listdir(LOCAL_DIR):
+                if not entry.lower().endswith('.svg'):
+                    continue
+                # create a minimal index entry for local curated assets
+                local_items.append({
+                    'id': None,
+                    'url': None,
+                    'filename': entry,
+                    'hash': None,
+                    'licenses': [],
+                    'collected_at': None
+                })
+            local_idx = {'items': local_items}
+            save_local_index(local_idx)
+            print('Local svg/index.json written with', len(local_items), 'entries')
+        except Exception as e:
+            print('Failed to write local index:', e)
         return
     if getattr(args, 'repair', False):
         idx = load_index()
@@ -369,6 +432,29 @@ def main():
                 break
         if not found:
             print('No index entry for id', target)
+        return
+
+    if getattr(args, 'sync_local', False):
+        # load remote index and mirror entries that exist into svg/index.json
+        idx = load_index()
+        local_items = []
+        for item in idx.get('items', []):
+            fname = item.get('filename') or ''
+            base = os.path.basename(fname)
+            remote_path = os.path.join(OUT_DIR, base)
+            if os.path.exists(remote_path):
+                # create a copy adapted for local index; reference remote filename
+                local_items.append({
+                    'id': item.get('id'),
+                    'url': item.get('url'),
+                    'filename': base,
+                    'hash': item.get('hash'),
+                    'licenses': item.get('licenses', []),
+                    'collected_at': item.get('collected_at')
+                })
+        local_idx = {'items': local_items}
+        save_local_index(local_idx)
+        print('Wrote local svg/index.json with', len(local_items), 'entries')
         return
 
     collect(start=args.start, limit=args.limit, batch=args.batch, max_checks=args.max_checks, random_mode=args.random, end=args.end, sleep=args.sleep)
