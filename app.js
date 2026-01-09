@@ -300,6 +300,12 @@ const App = () => {
     const [previewSplit, setPreviewSplit] = useState(50); // 50/50 split percentage
     const previewContainerRef = useRef(null);
     const isResizingRef = useRef(false);
+    const [editorCode, setEditorCode] = useState('');
+    const [accordionState, setAccordionState] = useState(() => {
+        try {
+            return JSON.parse(localStorage.getItem('accordionState') || '{"finalize":true}');
+        } catch (e) { return { finalize: true }; }
+    });
 
     // --- Helpers ---
 
@@ -698,6 +704,11 @@ const App = () => {
         fetchRandomSvg();
     }, []);
 
+    // Keep editorCode in sync with processed output
+    useEffect(() => {
+        if (processedSvg && processedSvg.code) setEditorCode(processedSvg.code);
+    }, [processedSvg.code]);
+
     // Load persisted settings (overrides, split, filters)
     useEffect(() => {
         try {
@@ -831,6 +842,8 @@ const App = () => {
                 h('h1', {}, 'A11y-SVG-Studio'),
                 h('p', {}, 'Optimize & Accessify')
             ]),
+
+            
 
             // 1. Input & Intent Widget
             h('div', { class: 'sidebar-section' }, [
@@ -1083,6 +1096,43 @@ const App = () => {
                     ]);
                 }))
             ])
+
+            ,
+            // 4. Finalize (Accordion)
+            h('div', { class: 'accordion', role: 'region', 'aria-expanded': accordionState.finalize ? 'true' : 'false', id: 'finalize-accordion' }, [
+                h('div', { class: 'accordion-header', onClick: (e) => {
+                    const next = { ...accordionState, finalize: !accordionState.finalize };
+                    setAccordionState(next);
+                    try { localStorage.setItem('accordionState', JSON.stringify(next)); } catch (err) {}
+                } }, [
+                    h('span', {}, 'Finalize'),
+                    h('span', { class: 'chev' }, '▸')
+                ]),
+                h('div', { class: 'accordion-content' }, [
+                    h('div', { style: 'display:flex; gap:0.5rem; align-items:center; justify-content:flex-start;' }, [
+                        h('button', { class: 'small', onClick: () => {
+                            if (!processedSvg || !processedSvg.code) return setA11yStatus('No optimized code to copy');
+                            navigator.clipboard.writeText(processedSvg.code);
+                            setA11yStatus('Optimized code copied');
+                            setTimeout(() => setA11yStatus(''), 1200);
+                        } }, 'Copy optimized code'),
+                        h('button', { class: 'small secondary', onClick: () => {
+                            if (!processedSvg || !processedSvg.code) return setA11yStatus('No optimized code to download');
+                            const blob = new Blob([processedSvg.code], { type: 'image/svg+xml' });
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = (currentFileName && currentFileName.endsWith('.svg')) ? currentFileName.replace(/\.svg$/, '.optimized.svg') : 'optimized.svg';
+                            document.body.appendChild(a);
+                            a.click();
+                            a.remove();
+                            URL.revokeObjectURL(url);
+                            setA11yStatus('Downloaded optimized SVG');
+                            setTimeout(() => setA11yStatus(''), 1200);
+                        } }, 'Download optimized code')
+                    ])
+                ])
+            ])
             ,
             // Revert All Overrides
             h('div', { class: 'sidebar-section' }, [
@@ -1137,21 +1187,32 @@ const App = () => {
                 })
             ]),
 
-            // Output Section
-            h('div', { class: 'code-output-section' }, [
-                h('div', { class: 'code-output-header' }, [
-                    h('strong', {}, 'Optimized Code'),
-                    h('button', { 
-                        class: 'small',
-                        onClick: () => {
-                            navigator.clipboard.writeText(processedSvg.code);
-                            setA11yStatus('Copied!');
-                            setTimeout(() => setA11yStatus(''), 2000);
-                        }
-                    }, 'Copy Code')
-                ]),
-                h('pre', { class: 'code-content' }, processedSvg.code)
+            // Bottom Editor: Live-edit optimized SVG (moved here)
+            h('div', { class: 'bottom-editor' }, [
+                h('textarea', {
+                    value: editorCode || processedSvg.code || svgInput,
+                    onInput: (e) => setEditorCode(e.target.value),
+                    placeholder: 'Optimized SVG will appear here. Edit and click Apply to re-run.'
+                }),
+                h('div', { class: 'editor-actions' }, [
+                    h('button', { class: 'small', onClick: () => {
+                        const newCode = editorCode || processedSvg.code || svgInput;
+                        if (!newCode) return setA11yStatus('Nothing to apply');
+                        setSvgInput(newCode);
+                        // Re-run optimize
+                        handleOptimize();
+                        setA11yStatus('Applied edited SVG');
+                        setTimeout(() => setA11yStatus(''), 1000);
+                    } }, 'Apply'),
+                    h('button', { class: 'small secondary', onClick: () => {
+                        setEditorCode(processedSvg.code || svgInput || '');
+                        setA11yStatus('Editor reset to optimized SVG');
+                        setTimeout(() => setA11yStatus(''), 900);
+                    } }, 'Reset')
+                ])
             ]),
+
+            // (Optimized code moved to bottom editor)
 
             // Dialog for Intent & Meta
             h('dialog', { ref: dialogRef }, [

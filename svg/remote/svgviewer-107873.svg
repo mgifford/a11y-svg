@@ -1,0 +1,35 @@
+<svg version="1.1" id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
+	 viewBox="0 0 512 512" style="enable-background:new 0 0 512 512;" xml:space="preserve">
+<circle style="fill:#FFD15D;" cx="256" cy="256" r="256"/>
+<path style="fill:#F9B54C;" d="M511.752,266.955L335.603,90.879L231.867,281.285l-55.47,111.39l116.334,116.693
+	C413.179,492.058,506.53,390.911,511.752,266.955z"/>
+<path style="fill:#324A5E;" d="M322.084,398.222H189.918c-10.631,0-19.249-8.618-19.249-19.249V104.584
+	c0-10.631,8.618-19.251,19.249-19.251h132.167c10.631,0,19.251,8.618,19.251,19.251v274.389
+	C341.335,389.604,332.716,398.222,322.084,398.222z"/>
+<path style="fill:#2B3B4E;" d="M322.084,85.333h-66.658v312.889h66.658c10.631,0,19.251-8.618,19.251-19.251V104.584
+	C341.335,93.951,332.716,85.333,322.084,85.333z"/>
+<rect x="177.562" y="113.778" style="fill:#FFFFFF;" width="156.875" height="256"/>
+<rect x="255.431" y="113.778" style="fill:#E6F3FF;" width="79.012" height="256"/>
+<circle style="fill:#4CDBC4;" cx="204.283" cy="214.626" r="14.222"/>
+<g>
+	<circle style="fill:#B5F1F4;" cx="239.33" cy="214.626" r="14.222"/>
+	<circle style="fill:#B5F1F4;" cx="274.394" cy="214.626" r="14.222"/>
+	<circle style="fill:#B5F1F4;" cx="309.441" cy="214.626" r="14.222"/>
+	<circle style="fill:#B5F1F4;" cx="204.283" cy="250.966" r="14.222"/>
+	<circle style="fill:#B5F1F4;" cx="239.33" cy="250.966" r="14.222"/>
+	<circle style="fill:#B5F1F4;" cx="274.394" cy="250.966" r="14.222"/>
+	<circle style="fill:#B5F1F4;" cx="309.441" cy="250.966" r="14.222"/>
+	<circle style="fill:#B5F1F4;" cx="204.283" cy="287.323" r="14.222"/>
+	<circle style="fill:#B5F1F4;" cx="239.33" cy="287.323" r="14.222"/>
+</g>
+<circle style="fill:#4CDBC4;" cx="274.394" cy="287.323" r="14.222"/>
+<g>
+	<circle style="fill:#B5F1F4;" cx="309.441" cy="287.323" r="14.222"/>
+	<circle style="fill:#B5F1F4;" cx="204.283" cy="323.663" r="14.222"/>
+	<circle style="fill:#B5F1F4;" cx="239.33" cy="323.663" r="14.222"/>
+	<circle style="fill:#B5F1F4;" cx="274.394" cy="323.663" r="14.222"/>
+	<circle style="fill:#B5F1F4;" cx="309.441" cy="323.663" r="14.222"/>
+</g>
+<rect x="184.889" y="142.222" style="fill:#FD8469;" width="142.222" height="41.374"/>
+<rect x="255.431" y="142.222" style="fill:#FC6F58;" width="71.685" height="41.374"/>
+</svg>

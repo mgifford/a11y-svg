@@ -377,3 +377,58 @@ dialog h3 { margin-top: 0; }
     clip: rect(0, 0, 0, 0);
     border: 0;
 }
+
+/* Accordion controls in sidebar */
+.accordion {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--card-bg);
+    overflow: hidden;
+}
+.accordion-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem;
+    cursor: pointer;
+    font-weight: 600;
+    gap: 0.5rem;
+}
+.accordion-content {
+    padding: 0.5rem;
+    border-top: 1px solid var(--border);
+    display: none;
+}
+.accordion[aria-expanded="true"] .accordion-content { display: block; }
+
+.accordion .chev { transition: transform 0.12s ease; }
+.accordion[aria-expanded="true"] .chev { transform: rotate(90deg); }
+
+/* Bottom editor beneath previews for live-edit of optimized SVG */
+.bottom-editor {
+    height: 220px;
+    background: var(--bg-body);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+.bottom-editor textarea {
+    flex: 1;
+    width: 100%;
+    padding: 0.75rem;
+    border: none;
+    resize: none;
+    font-family: monospace;
+    font-size: 0.85rem;
+    background: transparent;
+    color: var(--text-body);
+}
+.bottom-editor .editor-actions {
+    padding: 0.5rem;
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 0.5rem;
+    justify-content: flex-end;
+}

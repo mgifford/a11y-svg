@@ -1,0 +1,12 @@
+{
+  "name": "a11y-svg-studio",
+  "version": "0.1.0",
+  "description": "A11y SVG Studio — tests and helper scripts",
+  "private": true,
+  "scripts": {
+    "test:jsdom": "node tests/ui.test.js"
+  },
+  "devDependencies": {
+    "jsdom": "^22.1.0"
+  }
+}

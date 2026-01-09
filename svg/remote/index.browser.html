@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Collected SVGs</title>
+  <link rel="stylesheet" href="/styles.css">
+  <style>
+    body { padding: 1rem; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px,1fr)); gap: 1rem; }
+    .card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem; display:flex; flex-direction:column; gap:0.5rem; }
+    .code-view { height:220px; overflow:auto; background:#fff; border-radius:4px; padding:0.5rem; font-family: monospace; font-size:0.78rem; white-space: pre; }
+    .meta { font-size:0.9rem; color:#333; }
+    .actions { display:flex; gap:0.5rem; justify-content:space-between; }
+  </style>
+</head>
+<body>
+  <header style="display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-bottom:1rem;">
+    <h2 style="margin:0">Collected SVGs</h2>
+    <div>
+      <a class="small" href="/browse.html">Back to Browse</a>
+      <a class="small secondary" href="/index.html">Open App</a>
+    </div>
+  </header>
+
+  <div id="notice" role="status" aria-live="polite" style="margin-bottom:0.5rem;color:#444"></div>
+  <div id="grid" class="grid"></div>
+
+  <script>
+    const grid = document.getElementById('grid');
+    const notice = document.getElementById('notice');
+
+    async function loadIndex() {
+      try {
+        const res = await fetch('index.json');
+        if (!res.ok) throw new Error('index.json not found');
+        const idx = await res.json();
+        return idx.items || [];
+      } catch (err) {
+        notice.textContent = 'Could not load index.json in this folder. Run the collector to populate svg/remote/index.json.';
+        return [];
+      }
+    }
+
+    function makeCard(item) {
+      const card = document.createElement('div'); card.className = 'card';
+      const meta = document.createElement('div'); meta.className = 'meta';
+      meta.textContent = `${item.id || ''} — ${item.filename || item.url || ''}`;
+      card.appendChild(meta);
+
+      const codeView = document.createElement('pre'); codeView.className = 'code-view';
+      codeView.textContent = 'Click Load to fetch source...';
+      card.appendChild(codeView);
+
+      const actions = document.createElement('div'); actions.className = 'actions';
+      const left = document.createElement('div'); left.style.display='flex'; left.style.gap='0.4rem';
+
+      const loadBtn = document.createElement('button'); loadBtn.className='small'; loadBtn.textContent='Load';
+      loadBtn.onclick = async () => {
+        try {
+          codeView.textContent = 'Loading...';
+          const path = item.filename || item.url;
+          const res = await fetch(path);
+          if (!res.ok) throw new Error('fetch failed ' + res.status);
+          const text = await res.text();
+          codeView.textContent = text;
+        } catch (err) {
+          codeView.textContent = 'Error: ' + err.message;
+        }
+      };
+
+      const copyBtn = document.createElement('button'); copyBtn.className='small secondary'; copyBtn.textContent='Copy URL';
+      copyBtn.onclick = async () => { const u = item.filename || item.url; try{ await navigator.clipboard.writeText(u); notice.textContent='Copied URL'; setTimeout(()=>notice.textContent='','1200'); } catch(e){ notice.textContent='Clipboard failed'; } };
+      left.appendChild(loadBtn); left.appendChild(copyBtn);
+
+      const right = document.createElement('div'); right.style.display='flex'; right.style.gap='0.4rem';
+      const dlBtn = document.createElement('a'); dlBtn.className='small'; dlBtn.textContent='Download'; dlBtn.href = item.filename || item.url; dlBtn.download = '';
+      const useBtn = document.createElement('button'); useBtn.className='small secondary'; useBtn.textContent='Use in App';
+      useBtn.onclick = async () => { try{ await navigator.clipboard.writeText(item.filename || item.url); window.open('/index.html','_blank'); notice.textContent='Copied URL — open app and paste into SVG input'; setTimeout(()=>notice.textContent='','1400'); } catch(e){ notice.textContent='Failed to copy'; } };
+      right.appendChild(dlBtn); right.appendChild(useBtn);
+
+      actions.appendChild(left); actions.appendChild(right);
+      card.appendChild(actions);
+      return card;
+    }
+
+    (async () => {
+      const items = await loadIndex();
+      if (items.length === 0) {
+        grid.innerHTML = '<div style="grid-column:1/-1;color:#666">No items found in index.json</div>';
+        return;
+      }
+      items.forEach(item => grid.appendChild(makeCard(item)));
+    })();
+  </script>
+</body>
+</html>
