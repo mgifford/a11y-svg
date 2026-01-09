@@ -39,7 +39,7 @@ lerna-debug.log*
 .env.*.local
 
 # Optional: Uncomment if you add node_modules for development tooling
-# node_modules/
-# package-lock.json
-# yarn.lock
-# pnpm-lock.yaml
+node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml

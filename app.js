@@ -332,13 +332,13 @@ const App = () => {
                     if (val && val.startsWith('#')) {
                         const lowerVal = val.toLowerCase();
                         uniqueC.add(lowerVal);
-                        
-                        // Replace with currentColor?
-                        if (options.useCurrentColor) {
+
+                        // Apply any user-specified dark mode / override mapping
+                        if (darkModeColors[lowerVal]) {
+                            el.setAttribute(attr, darkModeColors[lowerVal]);
+                        } else if (options.useCurrentColor) {
                             el.setAttribute(attr, 'currentColor');
-                        } 
-                        // Replace with CSS Vars?
-                        else if (options.useCssVars) {
+                        } else if (options.useCssVars) {
                             const varName = `--svg-color-${lowerVal.replace('#', '')}`;
                             colorMap.set(lowerVal, varName);
                         }
@@ -761,12 +761,26 @@ const App = () => {
                          }),
                          h('code', { style: 'font-size:0.75rem;' }, c),
                          h('span', { style: 'font-size: 0.65rem; color: #666;' }, `(${colorInfo.isText ? 'T' : 'G'}${colorInfo.isLarge ? 'L' : ''})`),
-                         options.injectDarkMode && h('input', { 
-                                type: 'color', 
-                                style: 'width:20px; height:20px; padding:0; border:none; background:none;',
-                                title: 'Dark mode color override',
-                                onChange: (e) => setDarkModeColors({ ...darkModeColors, [c]: e.target.value })
-                         }),
+                        options.injectDarkMode && h('input', { 
+                               type: 'color', 
+                               style: 'width:20px; height:20px; padding:0; border:none; background:none; cursor: pointer;',
+                               title: 'Dark mode color override',
+                               value: darkModeColors[c] || '',
+                               onInput: (e) => setDarkModeColors({ ...darkModeColors, [c]: e.target.value })
+                        }),
+                        // Live override for this color (applies to previews)
+                        h('button', { 
+                            class: 'small',
+                            style: 'margin-left:6px;',
+                            onClick: () => {
+                                // Toggle a quick swap between this color and white/black for testing
+                                const current = darkModeColors[c];
+                                const next = current ? null : (isText ? '#000000' : '#ffffff');
+                                const copy = { ...darkModeColors };
+                                if (next) copy[c] = next; else delete copy[c];
+                                setDarkModeColors(copy);
+                            }
+                        }, 'Toggle Override'),
                          h('div', { style: 'margin-left:auto; display:flex; gap:2px; align-items:center;' }, [
                             // Light Mode
                             h('div', { 
