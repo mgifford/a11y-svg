@@ -300,7 +300,9 @@ const App = () => {
     const [previewSplit, setPreviewSplit] = useState(50); // 50/50 split percentage
     const previewContainerRef = useRef(null);
     const isResizingRef = useRef(false);
+    const editorTimerRef = useRef(null);
     const [editorCode, setEditorCode] = useState('');
+    const [lintResults, setLintResults] = useState([]);
     const [accordionState, setAccordionState] = useState(() => {
         try {
             return JSON.parse(localStorage.getItem('accordionState') || '{"finalize":true}');
@@ -338,31 +340,318 @@ const App = () => {
     const parseColors = (svgString) => {
         const parser = new DOMParser();
         const doc = parser.parseFromString(svgString, 'image/svg+xml');
-        const colorMap = new Map(); // hex -> { isText, isLarge, count }
+        const colorMap = new Map(); // key -> { hex, isText, isLarge, count, originals: Set }
         const elements = doc.querySelectorAll('*');
-        
+
+        // collect CSS variables from <style> blocks
+        const cssVars = {};
+        const styleEls = doc.querySelectorAll('style');
+        styleEls.forEach(s => {
+            const txt = s.textContent || '';
+            // simple regex to capture --var: value;
+            const re = /(--[a-zA-Z0-9-_]+)\s*:\s*([^;]+)\s*;/g;
+            let m;
+            while ((m = re.exec(txt)) !== null) {
+                cssVars[m[1].trim()] = m[2].trim();
+            }
+        });
+
+        // helper to resolve color tokens (hex, var(), currentColor, color-mix)
+        const resolveColorValue = (val, el) => {
+            if (!val) return null;
+            const v = val.trim();
+            // direct hex
+            const hexRe = /^#([0-9a-fA-F]{3,8})$/;
+            const mhex = v.match(hexRe);
+            if (mhex) {
+                // normalize 3-char to 6-char
+                let h = mhex[0].toLowerCase();
+                if (h.length === 4) {
+                    h = '#' + h[1]+h[1]+h[2]+h[2]+h[3]+h[3];
+                }
+                return h;
+            }
+            // var(--name)
+            const varRe = /^var\((--[a-zA-Z0-9-_]+)\)$/i;
+            const mv = v.match(varRe);
+            if (mv) {
+                const name = mv[1];
+                const resolved = cssVars[name];
+                if (resolved) return resolveColorValue(resolved, el);
+                return null;
+            }
+            // currentColor -> attempt to read from element or svg root styles
+            if (v === 'currentColor') {
+                // check inline style on element or nearest svg root
+                let cur = null;
+                const styleAttr = el.getAttribute && el.getAttribute('style');
+                if (styleAttr) {
+                    const m = styleAttr.match(/color\s*:\s*([^;]+)/);
+                    if (m) cur = m[1].trim();
+                }
+                if (!cur) {
+                    const svgRoot = doc.querySelector('svg');
+                    if (svgRoot) {
+                        const rootStyle = svgRoot.getAttribute && svgRoot.getAttribute('style');
+                        if (rootStyle) {
+                            const m2 = rootStyle.match(/color\s*:\s*([^;]+)/);
+                            if (m2) cur = m2[1].trim();
+                        }
+                        // also check attribute color
+                        if (!cur) cur = svgRoot.getAttribute('color');
+                    }
+                }
+                if (cur) return resolveColorValue(cur, el);
+                return null;
+            }
+            // color-mix(in srgb, A 70%, B) basic parser
+            const mixRe = /color-mix\([^,]+,\s*([^\s,]+)\s*(\d+)%?\s*,\s*([^\)]+)\)/i;
+            const mm = v.match(mixRe);
+            if (mm) {
+                const a = mm[1];
+                const pct = parseFloat(mm[2]) / 100.0;
+                const b = mm[3].trim();
+                const ah = resolveColorValue(a, el);
+                let bh = resolveColorValue(b, el);
+                if (!bh) {
+                    // if b is 'transparent' or not resolvable, choose white as fallback
+                    bh = '#ffffff';
+                }
+                if (ah) {
+                    return mixHex(ah, bh, pct);
+                }
+                return null;
+            }
+            // rgb(), rgba(), named colors basic handling: try to use canvas to convert
+            try {
+                const ctx = document.createElement('canvas').getContext('2d');
+                ctx.fillStyle = v;
+                const rgba = ctx.fillStyle; // returns rgb(...) or #rrggbb
+                if (rgba) return resolveColorValue(rgba, el);
+            } catch (e) {}
+            return null;
+        };
+
+        const mixHex = (hexA, hexB, weightA) => {
+            const a = hexToRgb(hexA);
+            const b = hexToRgb(hexB);
+            const r = Math.round(a.r * weightA + b.r * (1 - weightA));
+            const g = Math.round(a.g * weightA + b.g * (1 - weightA));
+            const bl = Math.round(a.b * weightA + b.b * (1 - weightA));
+            return rgbToHex({ r, g, b: bl });
+        };
+
         elements.forEach(el => {
             const isText = isTextElement(el);
             const isLarge = isText ? isLargeText(el) : false;
-            
+
+            // check fill and stroke attributes and inline styles
+            const tryAttrs = [];
             ['fill', 'stroke'].forEach(attr => {
-                const val = el.getAttribute(attr);
-                if (val && val.startsWith('#')) {
-                    const hex = val.toLowerCase();
-                    if (colorMap.has(hex)) {
-                        const info = colorMap.get(hex);
-                        info.count++;
-                        // Mark as text if ANY element using this color is text
-                        if (isText) info.isText = true;
-                        if (isLarge) info.isLarge = true;
-                    } else {
-                        colorMap.set(hex, { hex, isText, isLarge, count: 1 });
-                    }
+                const av = el.getAttribute(attr);
+                if (av) tryAttrs.push({ token: av, attr });
+            });
+            // inline style string
+            const styleAttr = el.getAttribute && el.getAttribute('style');
+            if (styleAttr) {
+                // find fill:... and stroke:...
+                const mfill = styleAttr.match(/fill\s*:\s*([^;]+)/i);
+                if (mfill) tryAttrs.push({ token: mfill[1].trim(), attr: 'fill', inline: true });
+                const mstroke = styleAttr.match(/stroke\s*:\s*([^;]+)/i);
+                if (mstroke) tryAttrs.push({ token: mstroke[1].trim(), attr: 'stroke', inline: true });
+            }
+
+            tryAttrs.forEach(item => {
+                const orig = item.token;
+                const hex = resolveColorValue(orig, el);
+                if (!hex) return;
+                const key = hex;
+                if (colorMap.has(key)) {
+                    const info = colorMap.get(key);
+                    info.count++;
+                    if (isText) info.isText = true;
+                    if (isLarge) info.isLarge = true;
+                    info.originals.add(orig);
+                } else {
+                    colorMap.set(key, { hex: key, isText: isText, isLarge: isLarge, count: 1, originals: new Set([orig]) });
                 }
             });
         });
-        
-        return Array.from(colorMap.values());
+
+        // convert map to array
+        return Array.from(colorMap.values()).map(v => ({ hex: v.hex, isText: v.isText, isLarge: v.isLarge, count: v.count, originals: Array.from(v.originals) }));
+    };
+
+    // Linting: parse SVG, report XML errors and accessibility issues (WCAG 2.2 AA + APCA)
+    const lintSvg = (svgString) => {
+        const issues = [];
+        if (!svgString || svgString.trim().length === 0) return issues;
+        try {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(svgString, 'image/svg+xml');
+            // DOMParser places parse errors in <parsererror>
+            const parserError = doc.querySelector('parsererror');
+            if (parserError) {
+                const txt = parserError.textContent || 'XML parse error';
+                issues.push({ level: 'error', message: `XML parse error: ${txt.trim().slice(0,200)}` });
+                return issues;
+            }
+            const svgEl = doc.querySelector('svg');
+            if (!svgEl) {
+                issues.push({ level: 'error', message: 'No <svg> element found' });
+                return issues;
+            }
+
+            // Meta checks: title/desc for informational intent
+            if (intent === 'informational') {
+                if (!svgEl.querySelector('title')) issues.push({ level: 'error', message: 'Missing <title> element for informational SVG' });
+                if (!svgEl.querySelector('desc')) issues.push({ level: 'warning', message: 'Missing <desc> element for informational SVG' });
+            }
+
+            // Color contrast checks
+            const colorList = parseColors(svgString);
+            colorList.forEach(c => {
+                const hex = c.hex;
+                const isText = !!c.isText;
+                const isLarge = !!c.isLarge;
+                const originals = c.originals || [];
+                // WCAG: compute against both light and dark backgrounds
+                const ratioLight = getContrastRatio(hex, bgLight);
+                const ratioDark = getContrastRatio(hex, bgDark);
+                const worstRatio = Math.min(ratioLight, ratioDark);
+                const wcagLevel = getWCAGLevel(worstRatio, isText, isLarge);
+                if (wcagLevel === 'Fail') {
+                    // suggest a color using suggestAccessibleColor
+                    const suggested = suggestAccessibleColor(hex, bgLight, bgDark, isText, contrastMode);
+                    issues.push({ level: 'warning', message: `Color ${hex} fails WCAG contrast (ratios: ${ratioLight.toFixed(2)} / ${ratioDark.toFixed(2)}) for ${isText ? 'text' : 'graphics'}`, type: 'color', hex, originals, suggested });
+                }
+
+                // APCA: check signed Lc values
+                const apcaLight = getAPCAContrast(hex, bgLight);
+                const apcaDark = getAPCAContrast(hex, bgDark);
+                const absLight = Math.abs(apcaLight);
+                const absDark = Math.abs(apcaDark);
+                // thresholds: AA ~75
+                if (absLight < 75 && absDark < 75) {
+                    const suggested2 = suggestAccessibleColor(hex, bgLight, bgDark, isText, 'apca');
+                    issues.push({ level: 'warning', message: `Color ${hex} fails APCA (Lc: ${apcaLight.toFixed(1)} / ${apcaDark.toFixed(1)})`, type: 'color', hex, originals, suggested: suggested2 });
+                }
+            });
+
+        } catch (e) {
+            issues.push({ level: 'error', message: `Lint error: ${e && e.message ? e.message : String(e)}` });
+        }
+        return issues;
+    };
+
+    // Apply a color fix: replace original tokens in the editor code with newHex
+    const applyColorFix = (originalToken, newHex) => {
+        if (!originalToken) return;
+        const src = editorCode || processedSvg.code || svgInput || '';
+        try {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(src, 'image/svg+xml');
+            const svgEl = doc.querySelector('svg');
+            if (!svgEl) throw new Error('No <svg> root found');
+
+            const replaceInStyleBlocks = (token, hex) => {
+                const styleEls = doc.querySelectorAll('style');
+                let changed = false;
+                styleEls.forEach(s => {
+                    let txt = s.textContent || '';
+                    // replace CSS variable declaration --name: ...;
+                    const varNameMatch = token.match(/^--[a-zA-Z0-9-_]+$/);
+                    if (varNameMatch) {
+                        const re = new RegExp(`(${token})\\s*:\\s*([^;]+);`, 'g');
+                        if (re.test(txt)) {
+                            txt = txt.replace(re, `$1: ${hex};`);
+                            changed = true;
+                        }
+                    }
+                    // replace var(--name) usages
+                    const varUsageMatch = token.match(/^var\((--[a-zA-Z0-9-_]+)\)$/);
+                    if (varUsageMatch) {
+                        const vname = varUsageMatch[1];
+                        const re2 = new RegExp(`var\\(\\s*${vname}\\s*\\)`, 'g');
+                        if (re2.test(txt)) {
+                            txt = txt.replace(re2, hex);
+                            changed = true;
+                        }
+                    }
+                    // replace direct occurrences of the token in style blocks (e.g., fill: token;)
+                    const tokenEsc = token.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&');
+                    const re3 = new RegExp(`(:\\s*)${tokenEsc}((\\s*;)|\\)|\\s)`, 'g');
+                    if (re3.test(txt)) {
+                        txt = txt.replace(re3, `$1${hex}$2`);
+                        changed = true;
+                    }
+                    if (changed) s.textContent = txt;
+                });
+                return changed;
+            };
+
+            const replaceInAttributesAndStyles = (token, hex) => {
+                const elements = doc.querySelectorAll('*');
+                let changed = false;
+                elements.forEach(el => {
+                    ['fill', 'stroke'].forEach(attr => {
+                        const val = el.getAttribute(attr);
+                        if (val && val.trim() === token) {
+                            el.setAttribute(attr, hex);
+                            changed = true;
+                        }
+                    });
+                    // inline style
+                    const styleAttr = el.getAttribute('style');
+                    if (styleAttr && styleAttr.indexOf(token) !== -1) {
+                        const newStyle = styleAttr.replace(new RegExp(token.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&'), 'g'), hex);
+                        el.setAttribute('style', newStyle);
+                        changed = true;
+                    }
+                });
+                return changed;
+            };
+
+            let didChange = false;
+            // If token is a CSS var name (--name) or var(--name) prefer updating declarations/usages
+            if (/^--[a-zA-Z0-9-_]+$/.test(originalToken) || /^var\(--[a-zA-Z0-9-_]+\)$/.test(originalToken)) {
+                didChange = replaceInStyleBlocks(originalToken, newHex) || replaceInAttributesAndStyles(originalToken, newHex);
+            } else {
+                // handle color-mix or direct tokens: update style blocks and attributes
+                didChange = replaceInStyleBlocks(originalToken, newHex) || replaceInAttributesAndStyles(originalToken, newHex);
+                // also replace direct occurrences in CSS rules not captured above
+                if (!didChange) didChange = replaceInStyleBlocks(originalToken, newHex);
+            }
+
+            let updated = null;
+            if (didChange) {
+                const serializer = new XMLSerializer();
+                updated = serializer.serializeToString(doc);
+            } else {
+                // Fallback to global text replace
+                const esc = originalToken.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&');
+                const re = new RegExp(esc, 'g');
+                updated = src.replace(re, newHex);
+            }
+
+            setEditorCode(updated);
+            setSvgInput(updated);
+            handleOptimize();
+            setLintResults(lintSvg(updated));
+            setA11yStatus(`Replaced ${originalToken} → ${newHex}`);
+            setTimeout(() => setA11yStatus(''), 1200);
+        } catch (e) {
+            // fallback behavior: naive replace
+            const esc = originalToken.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&');
+            const re = new RegExp(esc, 'g');
+            const updated = src.replace(re, newHex);
+            setEditorCode(updated);
+            setSvgInput(updated);
+            handleOptimize();
+            setLintResults(lintSvg(updated));
+            setA11yStatus(`Replaced ${originalToken} → ${newHex} (fallback)`);
+            setTimeout(() => setA11yStatus(''), 1200);
+        }
     };
 
     const handleOptimize = async () => {
@@ -642,6 +931,21 @@ const App = () => {
 
     // --- Effects ---
 
+    // Keep the editorCode in sync with the latest processed optimized code
+    useEffect(() => {
+        if (processedSvg && processedSvg.code) {
+            setEditorCode(processedSvg.code);
+        }
+    }, [processedSvg.code]);
+
+    // Lint after processing completes
+    useEffect(() => {
+        try {
+            const l = lintSvg(processedSvg.code || '');
+            setLintResults(l);
+        } catch (e) { setLintResults([{ level: 'error', message: String(e) }]); }
+    }, [processedSvg.code, intent, bgLight, bgDark]);
+
     const fetchRandomSvg = async (attemptsLeft = 3) => {
         try {
             setA11yStatus('Loading random sample...');
@@ -821,6 +1125,54 @@ const App = () => {
         document.addEventListener('touchmove', handleMouseMove, { passive: false });
         document.addEventListener('touchend', handleMouseUp);
         document.addEventListener('touchcancel', handleMouseUp);
+    };
+
+    // Sidebar resizer
+    const handleSidebarResizerMouseDown = (e) => {
+        e.preventDefault();
+        const startX = (e.touches && e.touches[0]) ? e.touches[0].clientX : e.clientX;
+        const startWidth = document.querySelector('.sidebar').getBoundingClientRect().width;
+        const doMove = (moveEvent) => {
+            const point = moveEvent.touches && moveEvent.touches.length ? moveEvent.touches[0] : moveEvent;
+            const dx = point.clientX - startX;
+            const newW = Math.max(200, Math.min(720, startWidth + dx));
+            document.querySelector('.sidebar').style.width = newW + 'px';
+        };
+        const stop = () => {
+            document.removeEventListener('mousemove', doMove);
+            document.removeEventListener('mouseup', stop);
+            document.removeEventListener('touchmove', doMove);
+            document.removeEventListener('touchend', stop);
+        };
+        document.addEventListener('mousemove', doMove);
+        document.addEventListener('mouseup', stop);
+        document.addEventListener('touchmove', doMove, { passive: false });
+        document.addEventListener('touchend', stop);
+    };
+
+    // Editor resizer (resize bottom editor height)
+    const handleEditorResizerMouseDown = (e) => {
+        e.preventDefault();
+        const editorEl = document.querySelector('.bottom-editor');
+        if (!editorEl) return;
+        const startY = (e.touches && e.touches[0]) ? e.touches[0].clientY : e.clientY;
+        const startH = editorEl.getBoundingClientRect().height;
+        const doMove = (moveEvent) => {
+            const point = moveEvent.touches && moveEvent.touches.length ? moveEvent.touches[0] : moveEvent;
+            const dy = startY - point.clientY; // dragging up increases height
+            const newH = Math.max(80, Math.min(window.innerHeight * 0.8, startH + dy));
+            editorEl.style.height = newH + 'px';
+        };
+        const stop = () => {
+            document.removeEventListener('mousemove', doMove);
+            document.removeEventListener('mouseup', stop);
+            document.removeEventListener('touchmove', doMove);
+            document.removeEventListener('touchend', stop);
+        };
+        document.addEventListener('mousemove', doMove);
+        document.addEventListener('mouseup', stop);
+        document.addEventListener('touchmove', doMove, { passive: false });
+        document.addEventListener('touchend', stop);
     };
 
 
@@ -1149,6 +1501,8 @@ const App = () => {
                 }, 'Revert All Overrides')
             ])
         ]),
+        // resizer between sidebar and main content
+        h('div', { class: 'sidebar-resizer', onMouseDown: handleSidebarResizerMouseDown, onTouchStart: handleSidebarResizerMouseDown }),
 
         // --- Main Content ---
         h('main', { class: 'main-content' }, [
@@ -1187,29 +1541,40 @@ const App = () => {
                 })
             ]),
 
-            // Bottom Editor: Live-edit optimized SVG (moved here)
+            // Editor resizer handle
+            h('div', { class: 'editor-resizer', onMouseDown: handleEditorResizerMouseDown, onTouchStart: handleEditorResizerMouseDown }),
+            // Bottom Editor: Live-edit optimized SVG. Edits update previews automatically (debounced).
             h('div', { class: 'bottom-editor' }, [
                 h('textarea', {
                     value: editorCode || processedSvg.code || svgInput,
-                    onInput: (e) => setEditorCode(e.target.value),
-                    placeholder: 'Optimized SVG will appear here. Edit and click Apply to re-run.'
-                }),
-                h('div', { class: 'editor-actions' }, [
-                    h('button', { class: 'small', onClick: () => {
-                        const newCode = editorCode || processedSvg.code || svgInput;
-                        if (!newCode) return setA11yStatus('Nothing to apply');
-                        setSvgInput(newCode);
-                        // Re-run optimize
-                        handleOptimize();
-                        setA11yStatus('Applied edited SVG');
-                        setTimeout(() => setA11yStatus(''), 1000);
-                    } }, 'Apply'),
-                    h('button', { class: 'small secondary', onClick: () => {
-                        setEditorCode(processedSvg.code || svgInput || '');
-                        setA11yStatus('Editor reset to optimized SVG');
-                        setTimeout(() => setA11yStatus(''), 900);
-                    } }, 'Reset')
-                ])
+                    onInput: (e) => {
+                        const txt = e.target.value;
+                        setEditorCode(txt);
+                        // Immediate lint
+                        try { setLintResults(lintSvg(txt)); } catch (er) { setLintResults([{ level: 'error', message: String(er) }]); }
+                        // Debounced live update: after 600ms of no typing, update svgInput and re-run processing
+                        if (editorTimerRef.current) clearTimeout(editorTimerRef.current);
+                        editorTimerRef.current = setTimeout(() => {
+                            setSvgInput(txt);
+                            handleOptimize();
+                            setA11yStatus('Preview updated');
+                            setTimeout(() => setA11yStatus(''), 900);
+                        }, 600);
+                    },
+                    placeholder: 'Optimized SVG will appear here. Edit to update the previews live.'
+                })
+            ]),
+            // Lint panel
+            h('div', { class: 'lint-panel', style: 'margin-top:0.5rem; padding:0.5rem; border-top:1px solid #eee;' }, [
+                h('div', { style: 'font-weight:600; margin-bottom:0.25rem;' }, `Lint: ${lintResults.length} issue${lintResults.length !== 1 ? 's' : ''}`),
+                lintResults.length === 0 && h('div', { style: 'color: #2b8a3e;' }, 'No issues found'),
+                lintResults.map((it, idx) => h('div', { key: idx, style: `color:${it.level==='error'?'#a41e22':'#8a6d1a'}; font-size:0.9rem; margin-top:0.2rem; display:flex; justify-content:space-between; align-items:center;` }, [
+                    h('div', {}, `${it.level.toUpperCase()}: ${it.message}`),
+                    it.type === 'color' && it.suggested ? h('div', {}, [
+                        h('span', { style: 'font-size:0.8rem;color:#444;margin-right:0.5rem;' }, `suggest: ${it.suggested}`),
+                        h('button', { class: 'small', onClick: () => applyColorFix((it.originals && it.originals[0]) || it.hex, it.suggested) }, 'Fix')
+                    ]) : null
+                ]))
             ]),
 
             // (Optimized code moved to bottom editor)

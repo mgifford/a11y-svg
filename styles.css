@@ -82,6 +82,33 @@ header p {
     flex-shrink: 0;
 }
 
+/* Sidebar resizer (between sidebar and main content) */
+.sidebar-resizer {
+    width: 8px;
+    cursor: col-resize;
+    background: linear-gradient(180deg, transparent 0%, rgba(0,0,0,0.06) 50%, transparent 100%);
+    flex-shrink: 0;
+    z-index: 40;
+}
+
+/* Bottom editor and resizer */
+.bottom-editor {
+    border-top: 1px solid var(--border);
+    padding: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    min-height: 80px;
+    max-height: 60vh;
+    overflow: auto;
+}
+
+.editor-resizer {
+    height: 8px;
+    cursor: row-resize;
+    background: linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.06) 50%, transparent 100%);
+}
+
 .sidebar-section {
     display: flex;
     flex-direction: column;
