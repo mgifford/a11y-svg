@@ -1,5 +1,96 @@
-<?xml version="1.0" encoding="UTF-8" ?>
-<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" baseProfile="tiny" viewBox="0 0 144 144">
-  <path d="M71.710938 9.933594c-16.949219 0-31.863282 6.273437-43.390625 17.964844-11.863282 12.035156-18.300782 27.625-18.300782 43.898437 0 16.4375 6.269532 31.691406 18.132813 43.554688 11.867187 11.863281 27.285156 18.300781 43.558594 18.300781 16.269531 0 32.03125-6.4375 44.234375-18.472656 11.523437-11.355469 17.625-26.4375 17.625-43.386719 0-16.777344-6.101563-32.03125-17.796875-43.726563-11.863282-11.859375-27.113282-18.132812-44.0625-18.132812Zm.167968 11.183594c13.898438 0 26.269532 5.253906 35.929688 14.914062 9.492187 9.492188 14.574219 22.035156 14.574219 35.761719 0 13.898437-4.914063 26.101562-14.40625 35.421875-10 9.832031-22.878907 15.085937-36.097657 15.085937-13.386718 0-25.929687-5.253906-35.589843-14.914062C26.625 97.726563 21.203125 85.015625 21.203125 71.796875c0-13.390625 5.421875-26.101562 15.085938-35.933594 9.488281-9.660156 21.691406-14.746093 35.589843-14.746093Z"/>
-  <path d="M88.722656 34.476563c-20.566406 0-20.898437 27.554687-20.898437 27.554687h7.929687s-.792968-20.566406 12.96875-20.089844c13.765625.472657 13.933594 20.089844 13.933594 20.089844h6.660156s-.027343-27.554687-20.59375-27.554687ZM33.144531 63.648438 32.875 85.300781c.042969 12.515625 10.195313 22.667969 22.726563 22.667969 12.535156 0 22.75-10.136719 22.75-22.667969l.039062-21.652343Zm22.457032 10.546875c2.472656 0 4.484375 1.972656 4.484375 4.445312 0 1.601563-.851563 3.019531-2.117188 3.808594v11.414062h-4.25V82.71875c-1.535156-.707031-2.582031-2.277344-2.582031-4.078125 0-2.472656 1.996094-4.445312 4.464844-4.445312Z"/>
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="192" height="192"
+     viewBox="0 0 144 144"
+     role="img"
+     aria-labelledby="drmLockTitle drmLockDesc"
+     focusable="true"
+     tabindex="0">
+  <title id="drmLockTitle">Digital rights management lock</title>
+  <desc id="drmLockDesc">A lock inside a circle representing DRM. The circle, lock body, and keyhole use separate colors for contrast demonstrations. The keyhole glows on hover or focus.</desc>
+
+  <style>
+    /* Light mode defaults */
+    :root{
+      --lock-circle: #0d47a1;   /* blue */
+      --lock-body:   #009688;   /* teal */
+      --lock-keyhole:#b71c1c;   /* red */
+      --glow-color:  #ffeb3b;   /* yellow */
+    }
+
+    /* Dark mode defaults */
+    @media (prefers-color-scheme: dark){
+      :root{
+        --lock-circle: #90caf9;
+        --lock-body:   #4db6ac;
+        --lock-keyhole:#ef9a9a;
+        --glow-color:  #fff59d;
+      }
+    }
+
+    .circle { fill: var(--lock-circle); }
+    .body   { fill: var(--lock-body); }
+
+    .keyhole{
+      fill: var(--lock-keyhole);
+      stroke: transparent;
+      stroke-width: 0;
+      paint-order: stroke fill;
+      transform-origin: 56px 84px; /* approx keyhole center */
+      transition: filter 160ms ease-in-out, transform 160ms ease-in-out, stroke 160ms ease-in-out, stroke-width 160ms ease-in-out;
+    }
+
+    /* Internal focus indicator for the whole icon */
+    svg:focus,
+    svg:focus-visible{
+      outline: 3px solid var(--glow-color);
+      outline-offset: 4px;
+      border-radius: 10px;
+    }
+
+    /* Keyhole emphasis on hover and focus (keyboard or mouse) */
+    svg:hover .keyhole,
+    svg:focus .keyhole,
+    svg:focus-visible .keyhole{
+      filter:
+        drop-shadow(0 0 2px var(--glow-color))
+        drop-shadow(0 0 8px var(--glow-color));
+      stroke: var(--glow-color);
+      stroke-width: 1.25;
+      transform: scale(1.03);
+    }
+
+    @media (prefers-reduced-motion: reduce){
+      .keyhole{ transition: none; }
+    }
+
+    /* Forced colors mode support */
+    @media (forced-colors: active){
+      /* Let the UA map system colors. Avoid author colors that will be overridden anyway. */
+      svg { forced-color-adjust: auto; }
+
+      .circle { fill: Canvas; stroke: CanvasText; stroke-width: 2; }
+      .body   { fill: CanvasText; }
+      .keyhole{
+        fill: Highlight;
+        stroke: HighlightText;
+        stroke-width: 1.5;
+        filter: none;           /* drop-shadows usually ignored */
+        transform: none;        /* keep stable */
+      }
+
+      svg:focus,
+      svg:focus-visible{
+        outline: 2px solid Highlight;
+      }
+    }
+  </style>
+
+  <!-- Outer circle -->
+  <path class="circle" d="M71.710938 9.933594c-16.949219 0-31.863282 6.273437-43.390625 17.964844-11.863282 12.035156-18.300782 27.625-18.300782 43.898437 0 16.4375 6.269532 31.691406 18.132813 43.554688 11.867187 11.863281 27.285156 18.300781 43.558594 18.300781 16.269531 0 32.03125-6.4375 44.234375-18.472656 11.523437-11.355469 17.625-26.4375 17.625-43.386719 0-16.777344-6.101563-32.03125-17.796875-43.726563-11.863282-11.859375-27.113282-18.132812-44.0625-18.132812Zm.167968 11.183594c13.898438 0 26.269532 5.253906 35.929688 14.914062 9.492187 9.492188 14.574219 22.035156 14.574219 35.761719 0 13.898437-4.914063 26.101562-14.40625 35.421875-10 9.832031-22.878907 15.085937-36.097657 15.085937-13.386718 0-25.929687-5.253906-35.589843-14.914062C26.625 97.726563 21.203125 85.015625 21.203125 71.796875c0-13.390625 5.421875-26.101562 15.085938-35.933594 9.488281-9.660156 21.691406-14.746093 35.589843-14.746093Z"/>
+
+  <!-- Lock body -->
+  <path class="body" d="M88.722656 34.476563c-20.566406 0-20.898437 27.554687-20.898437 27.554687h7.929687s-.792968-20.566406 12.96875-20.089844c13.765625.472657 13.933594 20.089844 13.933594 20.089844h6.660156s-.027343-27.554687-20.59375-27.554687ZM33.144531 63.648438 32.875 85.300781c.042969 12.515625 10.195313 22.667969 22.726563 22.667969 12.535156 0 22.75-10.136719 22.75-22.667969l.039062-21.652343Z"/>
+
+  <!-- Keyhole -->
+  <path class="keyhole" d="M55.601563 74.195313c2.472656 0 4.484375 1.972656 4.484375 4.445312 0 1.601563-.851563 3.019531-2.117188 3.808594v11.414062h-4.25V82.71875c-1.535156-.707031-2.582031-2.277344-2.582031-4.078125 0-2.472656 1.996094-4.445312 4.464844-4.445312Z"/>
 </svg>

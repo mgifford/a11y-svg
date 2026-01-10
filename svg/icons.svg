@@ -1,41 +1,198 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
-  <title>Icon Set Demo</title>
-  <desc>Various icons with high and low contrast elements to test color contrast</desc>
-  
+<svg xmlns="http://www.w3.org/2000/svg"
+     viewBox="0 0 200 200"
+     role="img"
+     aria-labelledby="iconSetTitle iconSetDesc"
+     focusable="true"
+     tabindex="0">
+  <title id="iconSetTitle">Icon set demo</title>
+  <desc id="iconSetDesc">Four icons with labels for testing color contrast, including three intentionally low-contrast combinations. Icons animate on hover or focus.</desc>
+
+  <style>
+    :root{
+      /* Good colors */
+      --c-download-good: #0d47a1;
+      --c-settings-good: #00695c;
+      --c-alert-good:    #c62828;
+      --c-check-good:    #1b5e20;
+
+      /* BAD combinations (intentionally low contrast on light backgrounds) */
+      --c-download-bad:  #bcdcff;  /* Bad #1: too light blue */
+      --label-bad:       #b8b8b8;  /* Bad #2: too light gray */
+      --c-check-bad:     #bfecc8;  /* Bad #3: too light green */
+
+      /* Labels */
+      --label-strong: currentColor;
+      --label-muted:  #343434;
+
+      /* Background */
+      --bg: currentColor;
+      --bg-opacity: 0.03;
+
+      /* Interaction */
+      --glow: #ffeb3b;
+      --shadow: rgba(0,0,0,0.25);
+    }
+
+    @media (prefers-color-scheme: dark){
+      :root{
+        --c-download-good: #90caf9;
+        --c-settings-good: #80cbc4;
+        --c-alert-good:    #ef9a9a;
+        --c-check-good:    #a5d6a7;
+
+        /* Still "bad" but tuned to fail on dark surfaces instead */
+        --c-download-bad:  #1a2a3a; /* too dark / muddy on dark */
+        --label-bad:       #3a3a3a; /* too dark on dark */
+        --c-check-bad:     #203a28; /* too dark on dark */
+
+        --label-muted: #cfcfcf;
+        --bg-opacity: 0.06;
+        --glow: #fff59d;
+        --shadow: rgba(0,0,0,0.55);
+      }
+    }
+
+    /* Forced colors: keep it functional, drop decorative effects */
+    @media (forced-colors: active){
+      :root{
+        --c-download-good: CanvasText;
+        --c-settings-good: CanvasText;
+        --c-alert-good: Highlight;
+        --c-check-good: CanvasText;
+
+        /* "Bad" combos are meaningless under forced colors because UA overrides colors.
+           Keep them distinct but still visible. */
+        --c-download-bad:  GrayText;
+        --label-bad:       GrayText;
+        --c-check-bad:     GrayText;
+
+        --label-strong: CanvasText;
+        --label-muted:  CanvasText;
+        --bg-opacity: 0;
+        --glow: Highlight;
+      }
+    }
+
+    text{ font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+
+    .bg { fill: var(--bg); opacity: var(--bg-opacity); }
+
+    /* Good strokes */
+    .stroke-download-good { stroke: var(--c-download-good); fill: none; }
+    .stroke-settings-good { stroke: var(--c-settings-good); fill: none; }
+    .stroke-alert-good    { stroke: var(--c-alert-good); fill: none; }
+    .stroke-check-good    { stroke: var(--c-check-good); fill: none; }
+
+    /* BAD strokes / fills */
+    .stroke-download-bad { stroke: var(--c-download-bad); fill: none; } /* Bad #1 */
+    .stroke-check-bad    { stroke: var(--c-check-bad); fill: none; }    /* Bad #3 */
+    .label-bad           { fill: var(--label-bad); }                    /* Bad #2 */
+
+    .fill-download-good { fill: var(--c-download-good); }
+    .fill-alert-good    { fill: var(--c-alert-good); }
+
+    .label-strong { fill: var(--label-strong); }
+    .label-muted  { fill: var(--label-muted); }
+
+    /* Interaction setup */
+    .icon{
+      transform-origin: center;
+      transition: transform 160ms ease-in-out, filter 160ms ease-in-out;
+    }
+    .label{
+      transition: filter 160ms ease-in-out;
+    }
+    .label-underline{
+      opacity: 0;
+      transition: opacity 160ms ease-in-out;
+    }
+
+    /* Hover/focus effects (whole set) */
+    svg:hover .icon,
+    svg:focus .icon,
+    svg:focus-visible .icon{
+      filter:
+        drop-shadow(0 2px 3px var(--shadow))
+        drop-shadow(0 0 6px var(--glow));
+      transform: scale(1.03);
+    }
+
+    svg:hover .label-underline,
+    svg:focus .label-underline,
+    svg:focus-visible .label-underline{
+      opacity: 1;
+    }
+
+    svg:focus,
+    svg:focus-visible{
+      outline: 3px solid var(--glow);
+      outline-offset: 4px;
+      border-radius: 10px;
+    }
+
+    @media (prefers-reduced-motion: reduce){
+      .icon, .label-underline { transition: none; }
+    }
+
+    @media (forced-colors: active){
+      .icon{ filter: none !important; transform: none !important; }
+      svg:focus, svg:focus-visible{ outline: 2px solid Highlight; }
+      .label-underline{ opacity: 1; }
+    }
+  </style>
+
   <!-- Background -->
-  <rect width="200" height="200" fill="currentColor" opacity="0.02"/>
-  
-  <!-- Icon: Download (blue) -->
-  <g id="icon-download">
-    <circle cx="35" cy="35" r="25" fill="none" stroke="#0066cc" stroke-width="2"/>
-    <text x="35" y="42" text-anchor="middle" font-size="24" font-weight="bold" fill="#0066cc">↓</text>
+  <rect class="bg" width="200" height="200" />
+
+  <!-- Icon: Download (BAD #1: low contrast stroke) -->
+  <g id="icon-download" class="icon" aria-hidden="true">
+    <circle cx="35" cy="35" r="25" class="stroke-download-bad" stroke-width="2"/>
+    <text x="35" y="42" text-anchor="middle" font-size="24" font-weight="700" class="fill-download-good">↓</text>
   </g>
-  
-  <!-- Icon: Settings (teal) -->
-  <g id="icon-settings">
-    <circle cx="110" cy="35" r="25" fill="none" stroke="#009688" stroke-width="2"/>
-    <circle cx="110" cy="35" r="8" fill="none" stroke="#009688" stroke-width="1.5"/>
-    <line x1="110" y1="12" x2="110" y2="2" stroke="#009688" stroke-width="1.5"/>
-    <line x1="110" y1="68" x2="110" y2="58" stroke="#009688" stroke-width="1.5"/>
-    <line x1="138" y1="35" x2="148" y2="35" stroke="#009688" stroke-width="1.5"/>
-    <line x1="72" y1="35" x2="82" y2="35" stroke="#009688" stroke-width="1.5"/>
+
+  <!-- Icon: Settings (good) -->
+  <g id="icon-settings" class="icon" aria-hidden="true">
+    <circle cx="110" cy="35" r="25" class="stroke-settings-good" stroke-width="2"/>
+    <circle cx="110" cy="35" r="8" class="stroke-settings-good" stroke-width="1.5"/>
+    <line x1="110" y1="12" x2="110" y2="2" class="stroke-settings-good" stroke-width="1.5"/>
+    <line x1="110" y1="68" x2="110" y2="58" class="stroke-settings-good" stroke-width="1.5"/>
+    <line x1="138" y1="35" x2="148" y2="35" class="stroke-settings-good" stroke-width="1.5"/>
+    <line x1="72" y1="35" x2="82" y2="35" class="stroke-settings-good" stroke-width="1.5"/>
   </g>
-  
-  <!-- Icon: Alert (orange/red) -->
-  <g id="icon-alert">
-    <polygon points="35,110 20,140 50,140" fill="none" stroke="#ff6b35" stroke-width="2" stroke-linejoin="round"/>
-    <text x="35" y="130" text-anchor="middle" font-size="12" font-weight="bold" fill="#ff6b35">!</text>
+
+  <!-- Icon: Alert (good) -->
+  <g id="icon-alert" class="icon" aria-hidden="true">
+    <polygon points="35,110 20,140 50,140"
+             class="stroke-alert-good"
+             stroke-width="2"
+             stroke-linejoin="round"/>
+    <text x="35" y="130" text-anchor="middle" font-size="12" font-weight="800" class="fill-alert-good">!</text>
   </g>
-  
-  <!-- Icon: Check (green) -->
-  <g id="icon-check">
-    <circle cx="110" cy="125" r="20" fill="none" stroke="#2ecc71" stroke-width="2"/>
-    <polyline points="100,125 107,132 120,115" fill="none" stroke="#2ecc71" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Icon: Check (BAD #3: low contrast stroke) -->
+  <g id="icon-check" class="icon" aria-hidden="true">
+    <circle cx="110" cy="125" r="20" class="stroke-check-bad" stroke-width="2"/>
+    <polyline points="100,125 107,132 120,115"
+              class="stroke-check-bad"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"/>
   </g>
-  
-  <!-- Label Text -->
-  <text x="35" y="165" text-anchor="middle" font-size="10" font-weight="bold" fill="currentColor">Download</text>
-  <text x="110" y="165" text-anchor="middle" font-size="10" font-weight="bold" fill="currentColor">Settings</text>
-  <text x="35" y="180" text-anchor="middle" font-size="10" font-weight="bold" fill="currentColor">Alert</text>
-  <text x="110" y="180" text-anchor="middle" font-size="10" font-weight="bold" fill="currentColor">Check</text>
+
+  <!-- Labels -->
+  <g class="label" aria-hidden="true">
+    <text x="35" y="165" text-anchor="middle" font-size="10" font-weight="700" class="label-strong">Download</text>
+
+    <!-- BAD #2: low contrast label -->
+    <text x="110" y="165" text-anchor="middle" font-size="10" font-weight="700" class="label-bad">Settings</text>
+
+    <text x="35" y="180" text-anchor="middle" font-size="10" font-weight="700" class="label-strong">Alert</text>
+    <text x="110" y="180" text-anchor="middle" font-size="10" font-weight="700" class="label-muted">Check</text>
+
+    <!-- Underlines appear on hover/focus -->
+    <line class="label-underline" x1="18"  y1="168" x2="52"  y2="168" stroke="currentColor" stroke-width="1"/>
+    <line class="label-underline" x1="92"  y1="168" x2="128" y2="168" stroke="currentColor" stroke-width="1"/>
+    <line class="label-underline" x1="23"  y1="183" x2="47"  y2="183" stroke="currentColor" stroke-width="1"/>
+    <line class="label-underline" x1="98"  y1="183" x2="122" y2="183" stroke="currentColor" stroke-width="1"/>
+  </g>
 </svg>

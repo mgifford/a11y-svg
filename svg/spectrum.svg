@@ -12,14 +12,14 @@
   <rect x="152" y="30" width="20" height="80" fill="#d946ef"/>
   
   <!-- Labels -->
-  <text x="30" y="125" text-anchor="middle" font-size="8" font-weight="bold" fill="currentColor">Red</text>
-  <text x="52" y="125" text-anchor="middle" font-size="8" font-weight="bold" fill="currentColor">Orange</text>
-  <text x="74" y="125" text-anchor="middle" font-size="8" font-weight="bold" fill="#1a1a1a">Yellow</text>
+  <text x="30" y="125" text-anchor="middle" font-size="8" font-weight="bold" fill="#e63946">Red</text>
+  <text x="52" y="125" text-anchor="middle" font-size="8" font-weight="bold" fill="#f77f00">Orange</text>
+  <text x="74" y="125" text-anchor="middle" font-size="8" font-weight="bold" fill="currentColor">Yellow</text>
   <text x="96" y="125" text-anchor="middle" font-size="8" font-weight="bold" fill="currentColor">Green</text>
-  <text x="118" y="125" text-anchor="middle" font-size="8" font-weight="bold" fill="currentColor">Blue</text>
-  <text x="140" y="125" text-anchor="middle" font-size="8" font-weight="bold" fill="#ffffff">Purple</text>
-  <text x="162" y="125" text-anchor="middle" font-size="8" font-weight="bold" fill="#ffffff">Magenta</text>
+  <text x="118" y="125" text-anchor="middle" font-size="8" font-weight="bold" fill="#118ab2">Blue</text>
+  <text x="140" y="125" text-anchor="middle" font-size="8" font-weight="bold" fill="#7b2cbf">Purple</text>
+  <text x="162" y="125" text-anchor="middle" font-size="8" font-weight="bold" fill="#fff">Magenta</text>
   
   <!-- Title -->
-  <text x="100" y="20" text-anchor="middle" font-size="12" font-weight="bold" fill="currentColor">Rainbow Spectrum</text>
+  <text x="100" y="20" text-anchor="middle" font-size="12" font-weight="bold" fill="#000">Rainbow Spectrum</text>
 </svg>

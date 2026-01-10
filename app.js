@@ -1,11 +1,102 @@
 import { h, render } from 'https://esm.sh/preact@10.19.3';
-import { useState, useEffect, useRef } from 'https://esm.sh/preact@10.19.3/hooks';
+import { useState, useEffect, useRef, useMemo } from 'https://esm.sh/preact@10.19.3/hooks';
 import { optimize } from 'https://esm.sh/svgo@3.2.0/dist/svgo.browser.js';
 
 // --- Utils & Helpers ---
 
 function generateId(prefix = 'id') {
     return `${prefix}-${Math.random().toString(36).substr(2, 9)}`;
+}
+
+function formatXml(xml) {
+    const PADDING = '  ';
+    let pad = 0;
+    return xml
+        .replace(/>\s+</g, '><')
+        .replace(/</g, '\n<')
+        .trim()
+        .split('\n')
+        .map(line => {
+            if (line.match(/^<\//)) pad = Math.max(pad - 1, 0);
+            const formatted = `${PADDING.repeat(pad)}${line}`;
+            if (line.match(/^<[^!?][^>]*[^/]>/)) pad += 1;
+            return formatted;
+        })
+        .join('\n')
+        .replace(/^\s+/, '');
+}
+
+function beautifySvg(svg) {
+    if (!svg) return '';
+    try {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(svg, 'image/svg+xml');
+        if (doc.querySelector('parsererror')) return svg;
+        const serializer = new XMLSerializer();
+        const raw = serializer.serializeToString(doc);
+        return formatXml(raw);
+    } catch (e) {
+        return svg;
+    }
+}
+
+function escapeHtml(str) {
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+function buildHighlightHtml(code, tokens = []) {
+    if (!code) return '';
+    const unique = Array.from(new Set(tokens.filter(Boolean))).sort((a, b) => b.length - a.length);
+    let escaped = escapeHtml(code);
+    unique.forEach(token => {
+        const safe = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        try {
+            const regex = new RegExp(safe, 'gi');
+            escaped = escaped.replace(regex, match => `<mark data-token="${token}">${match}</mark>`);
+        } catch (e) {
+            // ignore malformed regex
+        }
+    });
+    return escaped;
+}
+
+function normalizeHex(hex) {
+    if (!hex) return null;
+    const h = hex.trim().toLowerCase();
+    if (/^#([0-9a-f]{3}){1,2}$/i.test(h)) {
+        if (h.length === 4) {
+            return `#${h[1]}${h[1]}${h[2]}${h[2]}${h[3]}${h[3]}`;
+        }
+        return h;
+    }
+    return null;
+}
+
+function normalizeColorToken(token) {
+    if (!token) return null;
+    const direct = normalizeHex(token);
+    if (direct) return direct;
+    if (token === 'none') return null;
+    try {
+        const ctx = document.createElement('canvas').getContext('2d');
+        ctx.fillStyle = token;
+        const computed = ctx.fillStyle; // returns rgb(...)
+        if (computed.startsWith('#')) return normalizeHex(computed);
+        if (computed.startsWith('rgb')) {
+            const nums = computed.match(/\d+/g);
+            if (!nums) return null;
+            const [r, g, b] = nums.map(n => Number(n));
+            const hex = '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
+            return hex;
+        }
+    } catch (e) {
+        return null;
+    }
+    return null;
 }
 
 // ===== WCAG 2.2 CONTRAST RATIO (Relative Luminance Method) =====
@@ -301,7 +392,6 @@ const App = () => {
     const previewContainerRef = useRef(null);
     const isResizingRef = useRef(false);
     const editorTimerRef = useRef(null);
-    const [editorCode, setEditorCode] = useState('');
     const [lintResults, setLintResults] = useState([]);
     const [lintPanelVisible, setLintPanelVisible] = useState(() => {
         try {
@@ -311,6 +401,17 @@ const App = () => {
         } catch (e) {}
         return true;
     });
+    const rawInputTimerRef = useRef(null);
+    const [originalCode, setOriginalCode] = useState('');
+    const [beautifiedCode, setBeautifiedCode] = useState('');
+    const [optimizedCode, setOptimizedCode] = useState('');
+    const [activeEditorTab, setActiveEditorTab] = useState('beautified');
+    const [recentHighlightTokens, setRecentHighlightTokens] = useState([]);
+    const highlightTimersRef = useRef({});
+    const [hoveredColor, setHoveredColor] = useState(null);
+    const beautifiedTextareaRef = useRef(null);
+    const beautifiedOverlayRef = useRef(null);
+    const latestSvgRef = useRef('');
     const lintListRef = useRef(null);
     const [accordionState, setAccordionState] = useState(() => {
         try {
@@ -319,6 +420,27 @@ const App = () => {
     });
 
     // --- Helpers ---
+
+    const addHighlightToken = (token) => {
+        if (!token) return;
+        const norm = normalizeHex(token) || token;
+        if (!norm) return;
+        setRecentHighlightTokens(prev => {
+            const filtered = prev.filter(t => t !== norm);
+            return [...filtered, norm];
+        });
+        if (highlightTimersRef.current[norm]) clearTimeout(highlightTimersRef.current[norm]);
+        highlightTimersRef.current[norm] = setTimeout(() => {
+            setRecentHighlightTokens(prev => prev.filter(t => t !== norm));
+            delete highlightTimersRef.current[norm];
+        }, 6000);
+    };
+
+    const combinedHighlightTokens = useMemo(() => {
+        const set = new Set(recentHighlightTokens);
+        if (hoveredColor) set.add(hoveredColor);
+        return Array.from(set);
+    }, [recentHighlightTokens, hoveredColor]);
 
     const onIntentChange = (newIntent) => {
         setIntent(newIntent);
@@ -553,10 +675,12 @@ const App = () => {
         return issues;
     };
 
+
     // Apply a color fix: replace original tokens in the editor code with newHex
     const applyColorFix = (originalToken, newHex) => {
-        if (!originalToken) return;
-        const src = editorCode || processedSvg.code || svgInput || '';
+        if (!originalToken || !newHex) return;
+        const src = beautifiedCode || processedSvg.code || svgInput || '';
+        const statusLabel = `Replaced ${originalToken} → ${newHex}`;
         try {
             const parser = new DOMParser();
             const doc = parser.parseFromString(src, 'image/svg+xml');
@@ -643,33 +767,29 @@ const App = () => {
                 updated = src.replace(re, newHex);
             }
 
-            setEditorCode(updated);
-            setSvgInput(updated);
-            handleOptimize();
-            setLintResults(lintSvg(updated));
-            setA11yStatus(`Replaced ${originalToken} → ${newHex}`);
-            setTimeout(() => setA11yStatus(''), 1200);
+            const beautified = beautifySvg(updated);
+            addHighlightToken(originalToken);
+            addHighlightToken(newHex);
+            commitBeautifiedChange(beautified, statusLabel);
         } catch (e) {
-            // fallback behavior: naive replace
             const esc = originalToken.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&');
             const re = new RegExp(esc, 'g');
             const updated = src.replace(re, newHex);
-            setEditorCode(updated);
-            setSvgInput(updated);
-            handleOptimize();
-            setLintResults(lintSvg(updated));
-            setA11yStatus(`Replaced ${originalToken} → ${newHex} (fallback)`);
-            setTimeout(() => setA11yStatus(''), 1200);
+            const beautified = beautifySvg(updated);
+            addHighlightToken(originalToken);
+            addHighlightToken(newHex);
+            commitBeautifiedChange(beautified, `${statusLabel} (fallback)`);
         }
     };
 
-    const handleOptimize = async () => {
+    async function handleOptimize(customSvg) {
         setA11yStatus(`Processing SVG... ${new Date().toLocaleTimeString()}`);
         
         try {
-            if (!svgInput) return;
+            const sourceCode = typeof customSvg === 'string' ? customSvg : svgInput;
+            if (!sourceCode) return;
 
-            let svgCode = svgInput;
+            let svgCode = sourceCode;
 
             // 1. SVGO Optimization (Safe config with a11y preservation)
             try {
@@ -930,12 +1050,61 @@ const App = () => {
             console.log('Generated Preview Dark:', darkCode.slice(0, 50) + '...');
 
             setProcessedSvg({ code: finalCode, light: lightCode, dark: darkCode });
+            setOptimizedCode(finalCode);
             setA11yStatus(`SVG processed successfully at ${new Date().toLocaleTimeString()}`);
 
         } catch (e) {
             console.error(e);
             setA11yStatus(`Error: ${e.message}`);
         }
+    }
+
+    const commitBeautifiedChange = (newCode, statusMsg = 'Preview updated') => {
+        const code = newCode || '';
+        setBeautifiedCode(code);
+        setSvgInput(code);
+        try {
+            setLintResults(lintSvg(code));
+        } catch (er) {
+            setLintResults([{ level: 'error', message: String(er) }]);
+        }
+        if (editorTimerRef.current) clearTimeout(editorTimerRef.current);
+        editorTimerRef.current = setTimeout(() => {
+            handleOptimize(code);
+            setA11yStatus(statusMsg);
+            setTimeout(() => setA11yStatus(''), 900);
+        }, 500);
+    };
+
+    const ingestOriginalInput = (rawCode, statusMsg = 'Source updated') => {
+        const source = rawCode || '';
+        setOriginalCode(source);
+        const pretty = source ? beautifySvg(source) : '';
+        commitBeautifiedChange(pretty, statusMsg);
+    };
+
+    const syncBeautifiedScroll = () => {
+        if (!beautifiedOverlayRef.current || !beautifiedTextareaRef.current) return;
+        beautifiedOverlayRef.current.scrollTop = beautifiedTextareaRef.current.scrollTop;
+        beautifiedOverlayRef.current.scrollLeft = beautifiedTextareaRef.current.scrollLeft;
+    };
+
+    const handleBeautifiedScroll = () => {
+        syncBeautifiedScroll();
+    };
+
+    const handleCodePointer = (event) => {
+        const mark = event.target.closest && event.target.closest('mark[data-token]');
+        if (mark) {
+            const token = mark.getAttribute('data-token');
+            if (token) setHoveredColor(token);
+        } else if (hoveredColor) {
+            setHoveredColor(null);
+        }
+    };
+
+    const handleEditorMouseLeave = () => {
+        setHoveredColor(null);
     };
 
     // Keyboard navigation for lint list: Up/Down to move, Enter to trigger Fix
@@ -964,13 +1133,6 @@ const App = () => {
     };
 
     // --- Effects ---
-
-    // Keep the editorCode in sync with the latest processed optimized code
-    useEffect(() => {
-        if (processedSvg && processedSvg.code) {
-            setEditorCode(processedSvg.code);
-        }
-    }, [processedSvg.code]);
 
     // Lint after processing completes
     useEffect(() => {
@@ -1008,9 +1170,8 @@ const App = () => {
                             const newHistory = [randomFile, ...history].slice(0, 3);
                             localStorage.setItem('svgHistory', JSON.stringify(newHistory));
                             
-                            setSvgInput(text);
                             setCurrentFileName(randomFile);
-                            setA11yStatus(`Loaded sample SVG: ${randomFile}`);
+                            ingestOriginalInput(text, `Loaded sample SVG: ${randomFile}`);
                         } else {
                             console.error(`SVG file is empty: ${randomFile}`);
                             if (attemptsLeft > 0) {
@@ -1042,10 +1203,54 @@ const App = () => {
         fetchRandomSvg();
     }, []);
 
-    // Keep editorCode in sync with processed output
     useEffect(() => {
-        if (processedSvg && processedSvg.code) setEditorCode(processedSvg.code);
-    }, [processedSvg.code]);
+        return () => {
+            Object.values(highlightTimersRef.current || {}).forEach(timer => clearTimeout(timer));
+            if (rawInputTimerRef.current) clearTimeout(rawInputTimerRef.current);
+            if (editorTimerRef.current) clearTimeout(editorTimerRef.current);
+        };
+    }, []);
+
+    useEffect(() => {
+        syncBeautifiedScroll();
+    }, [beautifiedCode, combinedHighlightTokens]);
+
+    useEffect(() => {
+        latestSvgRef.current = svgInput || '';
+    }, [svgInput]);
+
+    useEffect(() => {
+        if (!latestSvgRef.current || !intent) return;
+        handleOptimize(latestSvgRef.current);
+    }, [intent, meta, options, darkModeColors, elementOverrides]);
+
+    useEffect(() => {
+        const styleId = 'hovered-color-style';
+        let styleEl = document.getElementById(styleId);
+        const norm = normalizeHex(hoveredColor);
+        if (!norm) {
+            if (styleEl) styleEl.remove();
+            return;
+        }
+        if (!styleEl) {
+            styleEl = document.createElement('style');
+            styleEl.id = styleId;
+            document.head.appendChild(styleEl);
+        }
+        const upper = norm.toUpperCase();
+        styleEl.textContent = `
+            .preview-viewport svg [fill="${norm}"],
+            .preview-viewport svg [stroke="${norm}"],
+            .preview-viewport svg [fill="${upper}"],
+            .preview-viewport svg [stroke="${upper}"] {
+                outline: 2px solid #ff9800 !important;
+                outline-offset: 2px;
+            }
+        `;
+        return () => {
+            if (styleEl) styleEl.remove();
+        };
+    }, [hoveredColor]);
 
     // Load persisted settings (overrides, split, filters)
     useEffect(() => {
@@ -1084,19 +1289,6 @@ const App = () => {
     }, [lintPanelVisible]);
 
     useEffect(() => {
-        if (svgInput && intent) {
-            handleOptimize();
-        }
-    }, [svgInput, intent, meta, options, darkModeColors]);
-
-    // Re-run optimization when elementOverrides change so previews + badges update
-    useEffect(() => {
-        if (svgInput && intent) {
-            handleOptimize();
-        }
-    }, [elementOverrides]);
-
-    useEffect(() => {
         if (processedSvg && processedSvg.code) {
             const foundColors = parseColors(processedSvg.code);
             setColors(foundColors);
@@ -1104,7 +1296,7 @@ const App = () => {
             const foundColors = parseColors(svgInput);
             setColors(foundColors);
         }
-    }, [svgInput]);
+    }, [svgInput, processedSvg.code]);
 
     const handleDragOver = (e) => {
         e.preventDefault();
@@ -1120,9 +1312,8 @@ const App = () => {
         if (file && (file.type === 'image/svg+xml' || file.name.toLowerCase().endsWith('.svg'))) {
             const reader = new FileReader();
             reader.onload = (event) => {
-                setSvgInput(event.target.result);
                 setCurrentFileName(file.name);
-                setA11yStatus(`Loaded file: ${file.name}`);
+                ingestOriginalInput(event.target.result, `Loaded file: ${file.name}`);
             };
             reader.readAsText(file);
         } else {
@@ -1227,6 +1418,17 @@ const App = () => {
         return { label: 'Unknown', class: '', icon: '?' };
     };
     const currentIntent = getIntentLabel();
+    const canonicalBeautified = beautifiedCode || svgInput || '';
+    const canonicalOriginal = originalCode || svgInput || '';
+    const canonicalOptimized = optimizedCode || processedSvg.code || '';
+    const beautifiedHtml = useMemo(() => buildHighlightHtml(canonicalBeautified, combinedHighlightTokens), [canonicalBeautified, combinedHighlightTokens]);
+    const originalHtml = useMemo(() => buildHighlightHtml(canonicalOriginal, combinedHighlightTokens), [canonicalOriginal, combinedHighlightTokens]);
+    const optimizedHtml = useMemo(() => buildHighlightHtml(canonicalOptimized, combinedHighlightTokens), [canonicalOptimized, combinedHighlightTokens]);
+    const editorTabs = [
+        { id: 'original', label: 'Original', hint: 'Raw input' },
+        { id: 'beautified', label: 'Beautified', hint: 'Editable source' },
+        { id: 'optimized', label: 'Optimized', hint: 'SVGO output' }
+    ];
 
     return h('div', { class: 'app-layout' }, [
         
@@ -1265,10 +1467,15 @@ const App = () => {
 
                 h('textarea', { 
                     id: 'svg-code', 
-                    value: svgInput, 
+                    value: originalCode || svgInput || '', 
                     onInput: (e) => {
-                        setSvgInput(e.target.value);
+                        const next = e.target.value;
                         setCurrentFileName(''); // Clear filename on manual edit
+                        setOriginalCode(next);
+                        if (rawInputTimerRef.current) clearTimeout(rawInputTimerRef.current);
+                        rawInputTimerRef.current = setTimeout(() => {
+                            ingestOriginalInput(next, 'Source updated');
+                        }, 400);
                     },
                     onDragOver: handleDragOver,
                     onDrop: handleDrop,
@@ -1357,11 +1564,15 @@ const App = () => {
                     ])
                 ]),
                 
-                h('div', { class: 'color-list' }, colors.filter(ci => !filterTextOnly || ci.isText).map(colorInfo => {
+                (() => {
+                    const hoveredHex = normalizeHex(hoveredColor);
+                    return h('div', { class: 'color-list' }, colors.filter(ci => !filterTextOnly || ci.isText).map((colorInfo, idx) => {
                     const c = colorInfo.hex;
                     const isText = colorInfo.isText && !showTextAsNonText;
                     const isLarge = colorInfo.isLarge;
                     const isOverridden = !!darkModeColors[c];
+                        const normalizedColor = normalizeHex(c);
+                        const isHighlighted = hoveredHex && normalizedColor && hoveredHex === normalizedColor;
                     
                     let lightRatio, darkRatio, lightLc, darkLc, lightLevel, darkLevel;
                     
@@ -1377,7 +1588,18 @@ const App = () => {
                         darkLevel = getAPCALevel(darkLc);
                     }
                     
-                    return h('div', { class: 'color-item' }, [
+                        return h('div', { 
+                            key: `${c}-${idx}`,
+                            class: `color-item${isHighlighted ? ' is-highlighted' : ''}`,
+                            onMouseEnter: () => setHoveredColor(c),
+                            onMouseLeave: () => setHoveredColor(null),
+                            onFocusCapture: () => setHoveredColor(c),
+                            onBlurCapture: (e) => {
+                                if (!e.currentTarget.contains(e.relatedTarget)) {
+                                    setHoveredColor(null);
+                                }
+                            }
+                        }, [
                          h('div', { 
                              style: `width:16px; height:16px; background:${c}; border:1px solid #ccc; flex-shrink:0; border-radius: 2px;`,
                              title: `${c} (${colorInfo.isText ? 'text' : 'graphic'}${colorInfo.isLarge ? ', large' : ''})`
@@ -1488,7 +1710,8 @@ const App = () => {
                             contrastMode === 'wcag' ? darkRatio.toFixed(1) : darkLc.toFixed(0))
                         ])
                     ]);
-                }))
+                }));
+                })()
             ])
 
             ,
@@ -1585,30 +1808,65 @@ const App = () => {
 
             // Editor resizer handle
             h('div', { class: 'editor-resizer', onMouseDown: handleEditorResizerMouseDown, onTouchStart: handleEditorResizerMouseDown }),
-            // Bottom Editor: Live-edit optimized SVG. Edits update previews automatically (debounced).
-            h('div', { class: 'bottom-editor' }, [
-                h('textarea', {
-                    value: editorCode || processedSvg.code || svgInput,
-                    onInput: (e) => {
-                        const txt = e.target.value;
-                        setEditorCode(txt);
-                        // Immediate lint
-                        try { setLintResults(lintSvg(txt)); } catch (er) { setLintResults([{ level: 'error', message: String(er) }]); }
-                        // Debounced live update: after 600ms of no typing, update svgInput and re-run processing
-                        if (editorTimerRef.current) clearTimeout(editorTimerRef.current);
-                        editorTimerRef.current = setTimeout(() => {
-                            setSvgInput(txt);
-                            handleOptimize();
-                            setA11yStatus('Preview updated');
-                            setTimeout(() => setA11yStatus(''), 900);
-                        }, 600);
-                    },
-                    placeholder: 'Optimized SVG will appear here. Edit to update the previews live.'
-                })
+            // Bottom editor with tabbed layout
+            h('div', { class: 'bottom-editor', onMouseMove: handleCodePointer, onMouseLeave: handleEditorMouseLeave }, [
+                h('div', { class: 'editor-tabs', role: 'tablist' }, editorTabs.map(tab => h('button', {
+                    key: tab.id,
+                    type: 'button',
+                    id: `tab-${tab.id}`,
+                    role: 'tab',
+                    'aria-selected': activeEditorTab === tab.id,
+                    'aria-controls': `panel-${tab.id}`,
+                    class: `editor-tab${activeEditorTab === tab.id ? ' active' : ''}`,
+                    onClick: () => setActiveEditorTab(tab.id)
+                }, [
+                    h('span', { class: 'tab-label' }, tab.label),
+                    h('span', { class: 'tab-hint' }, tab.hint)
+                ]))),
+                h('div', { class: 'editor-body' }, [
+                    activeEditorTab === 'original' && h('div', { class: 'code-panel', role: 'tabpanel', id: 'panel-original', 'aria-labelledby': 'tab-original' }, [
+                        h('pre', { class: 'code-viewport', dangerouslySetInnerHTML: { __html: originalHtml || '&nbsp;' } })
+                    ]),
+                    activeEditorTab === 'beautified' && h('div', { class: 'code-panel is-editable', role: 'tabpanel', id: 'panel-beautified', 'aria-labelledby': 'tab-beautified' }, [
+                        h('div', { class: 'code-shell' }, [
+                            h('pre', { class: 'code-ghost', ref: beautifiedOverlayRef, dangerouslySetInnerHTML: { __html: beautifiedHtml || '&nbsp;' } }),
+                            h('textarea', {
+                                ref: beautifiedTextareaRef,
+                                value: canonicalBeautified,
+                                onInput: (e) => commitBeautifiedChange(e.target.value, 'Beautified updated'),
+                                onScroll: handleBeautifiedScroll,
+                                spellcheck: false,
+                                'aria-label': 'Beautified SVG editor'
+                            })
+                        ])
+                    ]),
+                    activeEditorTab === 'optimized' && h('div', { class: 'code-panel', role: 'tabpanel', id: 'panel-optimized', 'aria-labelledby': 'tab-optimized' }, [
+                        h('pre', { class: 'code-viewport', dangerouslySetInnerHTML: { __html: optimizedHtml || '&nbsp;' } })
+                    ]),
+                    h('div', { class: 'editor-footnote' }, 'Beautified edits drive previews, lint, and theming.')
+                ]),
+                recentHighlightTokens.length > 0 && (() => {
+                    const hoveredHex = normalizeHex(hoveredColor);
+                    const tokensToShow = [...recentHighlightTokens].slice(-6).reverse();
+                    return h('div', { class: 'editor-chips', role: 'group', 'aria-label': 'Recent color updates' }, [
+                        h('span', { class: 'chip-label' }, 'Recent'),
+                        ...tokensToShow.map(token => {
+                            const tokenHex = normalizeHex(token);
+                            const isActive = tokenHex && hoveredHex && tokenHex === hoveredHex;
+                            return h('button', {
+                                key: `${token}`,
+                                class: `chip${isActive ? ' active' : ''}`,
+                                onMouseEnter: () => setHoveredColor(token),
+                                onMouseLeave: () => setHoveredColor(null),
+                                onFocus: () => setHoveredColor(token),
+                                onBlur: () => setHoveredColor(null)
+                            }, String(token).toUpperCase());
+                        })
+                    ]);
+                })()
             ]),
-            // Lint panel (combined color issues + scrollable list)
-            (lintPanelVisible && lintResults.length > 0 ? (function() {
-                // Combine WCAG + APCA issues that refer to the same color hex
+
+            lintPanelVisible ? (() => {
                 const combined = [];
                 const colorMap = new Map();
                 lintResults.forEach(it => {
@@ -1617,7 +1875,6 @@ const App = () => {
                         const entry = colorMap.get(key) || { type: 'color', hex: key, messages: [], originals: new Set(), suggested: null };
                         entry.messages.push(it.message || '');
                         (it.originals || []).forEach(o => entry.originals.add(o));
-                        // prefer a suggested color that exists; keep one (we'll reconcile below)
                         if (it.suggested && !entry.suggested) entry.suggested = it.suggested;
                         colorMap.set(key, entry);
                     } else if (it) {
@@ -1625,12 +1882,10 @@ const App = () => {
                     }
                 });
                 for (const v of colorMap.values()) {
-                    // Attempt to pick a suggestion that satisfies both WCAG & APCA when possible
                     const hex = v.hex;
-                    const isText = true; // conservative: assume text-level importance when aggregated
+                    const isText = true;
                     const suggestedWCAG = suggestAccessibleColor(hex, bgLight, bgDark, isText, 'wcag');
                     const suggestedAPCA = suggestAccessibleColor(hex, bgLight, bgDark, isText, 'apca');
-                    // helper to test both
                     const passesBoth = (cand) => {
                         try {
                             const r1 = getWCAGLevel(Math.min(getContrastRatio(cand, bgLight), getContrastRatio(cand, bgDark)), isText, false);
@@ -1643,13 +1898,11 @@ const App = () => {
                     else if (suggestedAPCA && passesBoth(suggestedAPCA)) chosen = suggestedAPCA;
                     v.suggested = chosen;
                     v.originals = Array.from(v.originals);
-                    // create a combined message string
                     v.message = v.messages && v.messages.length ? v.messages.join(' — ') : `Color ${v.hex} has contrast issues`;
                     combined.push(v);
                 }
 
-                // sort combined so more severe (errors) first, then warnings; keep stable order
-                combined.sort((a,b) => {
+                combined.sort((a, b) => {
                     const la = (a.level === 'error') ? 0 : 1;
                     const lb = (b.level === 'error') ? 0 : 1;
                     return la - lb;
@@ -1661,25 +1914,22 @@ const App = () => {
                         h('button', { class: 'lint-close', onClick: () => setLintPanelVisible(false), 'aria-label': 'Hide lint panel' }, '×')
                     ]),
                     combined.length === 0 && h('div', { style: 'color: #2b8a3e; padding:0.5rem;' }, 'No issues found'),
-                    // show first two items inline (non-scrollable)
-                    h('div', { class: 'lint-top' }, combined.slice(0,2).map((it, idx) => h('div', { key: 'top-'+idx, class: 'lint-item lint-top-item', role: 'listitem', tabIndex: 0, 'aria-label': `${it.hex || ''} issues`, onKeyDown: handleLintKeyDown }, [
-                        // message split by standard if message contains both
-                        h('div', { class: 'lint-message' }, Array.isArray(it.messages) ? it.messages.map((m,i) => h('div', { key: 'm-'+i }, m)) : (it.message || '')),
+                    h('div', { class: 'lint-top' }, combined.slice(0, 2).map((it, idx) => h('div', { key: `top-${idx}`, class: 'lint-item lint-top-item', role: 'listitem', tabIndex: 0, 'aria-label': `${it.hex || ''} issues`, onKeyDown: handleLintKeyDown }, [
+                        h('div', { class: 'lint-message' }, Array.isArray(it.messages) ? it.messages.map((m, i) => h('div', { key: `m-${i}` }, m)) : (it.message || '')),
                         h('div', { class: 'lint-action' }, [
                             h('span', { class: 'suggest' }, it.suggested || ''),
                             h('button', { class: 'small', onClick: () => applyColorFix((it.originals && it.originals[0]) || it.hex, it.suggested || it.hex), 'aria-label': `Fix color ${it.hex || ''}` }, 'Fix')
                         ])
                     ]))),
-                    // scrollable remainder with keyboard nav
-                    h('div', { class: 'lint-list', role: 'list', ref: lintListRef, tabIndex: 0, onKeyDown: handleLintKeyDown }, combined.slice(2).map((it, idx) => h('div', { key: 'rest-'+idx, class: 'lint-item', role: 'listitem', tabIndex: 0, 'aria-label': `${it.hex || ''} issues` }, [
-                        h('div', { class: 'lint-message' }, Array.isArray(it.messages) ? it.messages.map((m,i) => h('div', { key: 'm-'+i }, m)) : (it.message || '')),
+                    h('div', { class: 'lint-list', role: 'list', ref: lintListRef, tabIndex: 0, onKeyDown: handleLintKeyDown }, combined.slice(2).map((it, idx) => h('div', { key: `rest-${idx}`, class: 'lint-item', role: 'listitem', tabIndex: 0, 'aria-label': `${it.hex || ''} issues` }, [
+                        h('div', { class: 'lint-message' }, Array.isArray(it.messages) ? it.messages.map((m, i) => h('div', { key: `m-${i}` }, m)) : (it.message || '')),
                         h('div', { class: 'lint-action' }, [
                             h('span', { class: 'suggest' }, it.suggested || ''),
                             h('button', { class: 'small', onClick: () => applyColorFix((it.originals && it.originals[0]) || it.hex, it.suggested || it.hex), 'aria-label': `Fix color ${it.hex || ''}` }, 'Fix')
                         ])
                     ])))
                 ]);
-            })() : null),
+            })() : null,
 
             lintResults.length > 0 && !lintPanelVisible && h('button', {
                 class: 'lint-indicator',

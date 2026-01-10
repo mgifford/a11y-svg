@@ -10,12 +10,12 @@
     <!-- Sun icon -->
     <circle cx="32" cy="45" r="8" fill="#ffc107"/>
     <line x1="32" y1="28" x2="32" y2="18" stroke="#ffc107" stroke-width="2" stroke-linecap="round"/>
-    <line x1="32" y1="72" x2="32" y2="62" stroke="#ffc107" stroke-width="2" stroke-linecap="round"/>
-    <line x1="49" y1="45" x2="59" y2="45" stroke="#ffc107" stroke-width="2" stroke-linecap="round"/>
-    <line x1="15" y1="45" x2="5" y2="45" stroke="#ffc107" stroke-width="2" stroke-linecap="round"/>
+    <line x1="32" y1="72" x2="32" y2="62" stroke="#ffc137" stroke-width="2" stroke-linecap="round"/>
+    <line x1="49" y1="45" x2="59" y2="45" stroke="#ffc187" stroke-width="2" stroke-linecap="round"/>
+    <line x1="15" y1="45" x2="5" y2="45" stroke="#efb107" stroke-width="2" stroke-linecap="round"/>
     
     <!-- Text -->
-    <text x="60" y="53" font-size="13" font-weight="bold" fill="currentColor">Light</text>
+    <text x="60" y="53" font-size="13" font-weight="bold" fill="#030303">Light</text>
   </g>
   
   <!-- Dark Mode Version (right side) -->
@@ -29,7 +29,7 @@
     
     <!-- Stars -->
     <circle cx="172" cy="30" r="1.5" fill="#ffeb3b"/>
-    <circle cx="178" cy="35" r="1" fill="#ffeb3b"/>
+    <circle cx="178" cy="35" r="1" fill="#ffc187"/>
     <circle cx="175" cy="58" r="1.5" fill="#ffeb3b"/>
     
     <!-- Text -->
