@@ -43,3 +43,8 @@ The tool must transform raw SVGs into WCAG 2.2 AA-compliant assets that are perf
 
 - Output:
 	- Provide a single Copy button for the finalized, accessible, and minified SVG code.
+
+## QA & Tooling Expectations
+- Keep the no-build GitHub Pages runtime, but maintainers may run local CLI helpers (`npm run svgo`, `npm run svg:lint`, `npm run axe`, `npm run pa11y`, or `npm run qa`) to vet incoming assets.
+- Ensure SVG assets committed to `svg/` pass these scripts; treat failures as blockers before shipping UI changes.
+- When documenting new features, mention which QA script protects that surface so contributors know how to validate their changes.

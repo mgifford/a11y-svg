@@ -1,6 +1,7 @@
 import { h, render } from 'https://esm.sh/preact@10.19.3';
 import { useState, useEffect, useRef, useMemo } from 'https://esm.sh/preact@10.19.3/hooks';
 import { optimize } from 'https://esm.sh/svgo@3.2.0/dist/svgo.browser.js';
+import xmlFormatter from 'https://esm.sh/xml-formatter@3.6.0';
 
 // --- Utils & Helpers ---
 
@@ -29,40 +30,25 @@ function formatXml(xml) {
 function beautifySvg(svg) {
     if (!svg) return '';
     try {
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(svg, 'image/svg+xml');
-        if (doc.querySelector('parsererror')) return svg;
-        const serializer = new XMLSerializer();
-        const raw = serializer.serializeToString(doc);
-        return formatXml(raw);
+        // First try a dedicated XML formatter for stable indentation
+        return xmlFormatter(svg, { indentation: '  ', lineSeparator: '\n' }).trim();
     } catch (e) {
-        return svg;
+        // Fallback to DOM parse + simple formatter
+        try {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(svg, 'image/svg+xml');
+            if (doc.querySelector('parsererror')) return svg;
+            const serializer = new XMLSerializer();
+            const raw = serializer.serializeToString(doc);
+            return formatXml(raw);
+        } catch (err) {
+            return svg;
+        }
     }
 }
 
-function escapeHtml(str) {
-    return str
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-}
-
-function buildHighlightHtml(code, tokens = []) {
-    if (!code) return '';
-    const unique = Array.from(new Set(tokens.filter(Boolean))).sort((a, b) => b.length - a.length);
-    let escaped = escapeHtml(code);
-    unique.forEach(token => {
-        const safe = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        try {
-            const regex = new RegExp(safe, 'gi');
-            escaped = escaped.replace(regex, match => `<mark data-token="${token}">${match}</mark>`);
-        } catch (e) {
-            // ignore malformed regex
-        }
-    });
-    return escaped;
-}
+const BEAUTIFIED_DISPLAY_SUFFIX = '\n\n\n\n\n';
+const OPTIMIZED_DISPLAY_SUFFIX = '\n\n';
 
 function normalizeHex(hex) {
     if (!hex) return null;
@@ -410,9 +396,10 @@ const App = () => {
     const highlightTimersRef = useRef({});
     const [hoveredColor, setHoveredColor] = useState(null);
     const beautifiedTextareaRef = useRef(null);
-    const beautifiedOverlayRef = useRef(null);
+    const optimizedTextareaRef = useRef(null);
     const latestSvgRef = useRef('');
     const lintListRef = useRef(null);
+    const fileInputRef = useRef(null);
     const [accordionState, setAccordionState] = useState(() => {
         try {
             return JSON.parse(localStorage.getItem('accordionState') || '{"finalize":true}');
@@ -445,6 +432,18 @@ const App = () => {
     const onIntentChange = (newIntent) => {
         setIntent(newIntent);
         setUserHasInteracted(true);
+    };
+
+    const handleInlineMetaChange = (field, value) => {
+        setUserHasInteracted(true);
+        setMeta(prev => ({ ...prev, [field]: value }));
+        if (intent === 'decorative' && value && value.trim()) {
+            setIntent('informational');
+        }
+    };
+
+    const triggerFilePicker = () => {
+        if (fileInputRef.current) fileInputRef.current.click();
     };
 
     const openMetaDialog = () => {
@@ -1080,31 +1079,8 @@ const App = () => {
         const source = rawCode || '';
         setOriginalCode(source);
         const pretty = source ? beautifySvg(source) : '';
+        setActiveEditorTab('beautified');
         commitBeautifiedChange(pretty, statusMsg);
-    };
-
-    const syncBeautifiedScroll = () => {
-        if (!beautifiedOverlayRef.current || !beautifiedTextareaRef.current) return;
-        beautifiedOverlayRef.current.scrollTop = beautifiedTextareaRef.current.scrollTop;
-        beautifiedOverlayRef.current.scrollLeft = beautifiedTextareaRef.current.scrollLeft;
-    };
-
-    const handleBeautifiedScroll = () => {
-        syncBeautifiedScroll();
-    };
-
-    const handleCodePointer = (event) => {
-        const mark = event.target.closest && event.target.closest('mark[data-token]');
-        if (mark) {
-            const token = mark.getAttribute('data-token');
-            if (token) setHoveredColor(token);
-        } else if (hoveredColor) {
-            setHoveredColor(null);
-        }
-    };
-
-    const handleEditorMouseLeave = () => {
-        setHoveredColor(null);
     };
 
     // Keyboard navigation for lint list: Up/Down to move, Enter to trigger Fix
@@ -1212,10 +1188,6 @@ const App = () => {
     }, []);
 
     useEffect(() => {
-        syncBeautifiedScroll();
-    }, [beautifiedCode, combinedHighlightTokens]);
-
-    useEffect(() => {
         latestSvgRef.current = svgInput || '';
     }, [svgInput]);
 
@@ -1321,6 +1293,22 @@ const App = () => {
         }
     };
 
+    const handleFileInputChange = (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        if (file.type === 'image/svg+xml' || file.name.toLowerCase().endsWith('.svg')) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                setCurrentFileName(file.name);
+                ingestOriginalInput(event.target.result, `Loaded file: ${file.name}`);
+            };
+            reader.readAsText(file);
+        } else {
+            setA11yStatus('Error: Please choose a valid SVG file.');
+        }
+        e.target.value = '';
+    };
+
     const handleResizerMouseDown = (e) => {
         e.preventDefault();
         const container = previewContainerRef.current;
@@ -1421,13 +1409,24 @@ const App = () => {
     const canonicalBeautified = beautifiedCode || svgInput || '';
     const canonicalOriginal = originalCode || svgInput || '';
     const canonicalOptimized = optimizedCode || processedSvg.code || '';
-    const beautifiedHtml = useMemo(() => buildHighlightHtml(canonicalBeautified, combinedHighlightTokens), [canonicalBeautified, combinedHighlightTokens]);
-    const originalHtml = useMemo(() => buildHighlightHtml(canonicalOriginal, combinedHighlightTokens), [canonicalOriginal, combinedHighlightTokens]);
-    const optimizedHtml = useMemo(() => buildHighlightHtml(canonicalOptimized, combinedHighlightTokens), [canonicalOptimized, combinedHighlightTokens]);
+    const beautifiedDisplay = useMemo(() => (canonicalBeautified || '') + BEAUTIFIED_DISPLAY_SUFFIX, [canonicalBeautified]);
+    const optimizedDisplay = useMemo(() => (canonicalOptimized || '') + OPTIMIZED_DISPLAY_SUFFIX, [canonicalOptimized]);
+    // Size metrics
+    const sizeOf = (s) => (s ? s.length : 0);
+    const fmtKB = (n) => `${(n / 1024).toFixed(1)} KB`;
+    const pctDiff = (base, val) => {
+        if (!base) return null;
+        const d = ((val - base) / base) * 100;
+        const sign = d > 0 ? '+' : '';
+        return `${sign}${d.toFixed(0)}%`;
+    };
+    const oSize = sizeOf(canonicalOriginal);
+    const bSize = sizeOf(canonicalBeautified);
+    const zSize = sizeOf(canonicalOptimized);
     const editorTabs = [
-        { id: 'original', label: 'Original', hint: 'Raw input' },
-        { id: 'beautified', label: 'Beautified', hint: 'Editable source' },
-        { id: 'optimized', label: 'Optimized', hint: 'SVGO output' }
+        { id: 'original', label: 'Original', hint: `Raw input • ${fmtKB(oSize)}` },
+        { id: 'beautified', label: 'Beautified', hint: `Editable source • ${fmtKB(bSize)}${oSize ? ` (${pctDiff(oSize, bSize)})` : ''}` },
+        { id: 'optimized', label: 'Optimized', hint: `SVGO output • ${fmtKB(zSize)}${oSize ? ` (${pctDiff(oSize, zSize)})` : ''}` }
     ];
 
     return h('div', { class: 'app-layout' }, [
@@ -1439,53 +1438,69 @@ const App = () => {
                 h('p', {}, 'Optimize & Accessify')
             ]),
 
-            
-
-            // 1. Input & Intent Widget
-            h('div', { class: 'sidebar-section' }, [
-                h('div', { style: 'display:flex; justify-content:space-between; align-items:center;' }, [
-                    h('span', { class: 'sidebar-label' }, '1. Input & Intent'),
+            h('div', { class: 'sidebar-section input-card' }, [
+                h('span', { class: 'sidebar-label' }, 'Input & Samples'),
+                h('p', { class: 'sidebar-note' }, 'Drag an SVG here or click to pick a file.'),
+                h('div', {
+                    class: 'dropzone',
+                    role: 'button',
+                    tabIndex: 0,
+                    onClick: triggerFilePicker,
+                    onKeyDown: (e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            triggerFilePicker();
+                        }
+                    },
+                    onDragOver: handleDragOver,
+                    onDrop: handleDrop,
+                    'aria-label': 'Drop or pick an SVG file'
+                }, [
+                    h('div', { class: 'dropzone-title' }, 'Drop SVG to load'),
+                    h('div', { class: 'dropzone-hint' }, 'Supports drag & drop, paste, or file picker')
+                ]),
+                h('div', { class: 'input-actions' }, [
                     h('button', { class: 'small secondary', onClick: fetchRandomSvg, title: 'Load new sample' }, 'Random')
                 ]),
-                
-                // Intent Status Widget
-                h('div', { class: 'intent-widget' }, [
+                h('input', { type: 'file', accept: 'image/svg+xml', ref: fileInputRef, style: 'display:none', onChange: handleFileInputChange })
+            ]),
+
+            h('div', { class: 'sidebar-section intent-card' }, [
+                h('span', { class: 'sidebar-label' }, 'Accessibility Intent'),
+                h('div', { class: 'intent-inline' }, [
                     h('div', { class: 'intent-status' }, [
                         h('div', { class: `status-dot ${currentIntent.class}` }),
                         h('span', {}, currentIntent.label)
                     ]),
-                    h('button', { 
-                        class: 'icon-btn', 
-                        title: 'Edit Accessibility Settings',
-                        onClick: openMetaDialog
-                    }, '⚙️')
+                    h('button', { class: 'icon-btn', title: 'Edit Accessibility Settings', onClick: openMetaDialog }, '⚙️')
                 ]),
-                
-                currentFileName && h('div', { 
-                    style: 'font-size: 0.75rem; color: #666; margin-bottom: 0.5rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;' 
-                }, `Loaded: ${currentFileName}`),
-
-                h('textarea', { 
-                    id: 'svg-code', 
-                    value: originalCode || svgInput || '', 
-                    onInput: (e) => {
-                        const next = e.target.value;
-                        setCurrentFileName(''); // Clear filename on manual edit
-                        setOriginalCode(next);
-                        if (rawInputTimerRef.current) clearTimeout(rawInputTimerRef.current);
-                        rawInputTimerRef.current = setTimeout(() => {
-                            ingestOriginalInput(next, 'Source updated');
-                        }, 400);
-                    },
-                    onDragOver: handleDragOver,
-                    onDrop: handleDrop,
-                    placeholder: 'Paste SVG or drag file here...'
-                })
+                h('div', { class: 'meta-fields' }, [
+                    h('label', { class: 'meta-field' }, [
+                        h('span', {}, 'Title'),
+                        h('input', {
+                            type: 'text',
+                            value: meta.title,
+                            placeholder: 'Add a short, unique title',
+                            onInput: (e) => handleInlineMetaChange('title', e.target.value)
+                        })
+                    ]),
+                    h('label', { class: 'meta-field' }, [
+                        h('span', {}, 'Description'),
+                        h('textarea', {
+                            rows: 2,
+                            value: meta.desc,
+                            placeholder: 'Describe the visual meaning',
+                            onInput: (e) => handleInlineMetaChange('desc', e.target.value)
+                        })
+                    ])
+                ]),
+                (!meta.title || !meta.desc) && h('p', { class: 'meta-hint' }, 'If this image conveys meaning, add a title and description so screen readers announce it.'),
+                intent === 'decorative' && h('p', { class: 'meta-hint warning' }, 'Currently marked Decorative. Switch to Informational if this SVG carries meaning.')
             ]),
 
-            // 2. Theming
+            // 1. Theming
             h('div', { class: 'sidebar-section' }, [
-                h('span', { class: 'sidebar-label' }, '2. Theming'),
+                h('span', { class: 'sidebar-label' }, '1. Theming'),
                 h('label', { class: 'radio-item' }, [
                     h('input', { 
                         type: 'checkbox', 
@@ -1504,9 +1519,9 @@ const App = () => {
                 ])
             ]),
 
-            // 3. Colors & Contrast
+            // 2. Colors & Contrast
             colors.length > 0 && h('div', { class: 'sidebar-section' }, [
-                h('span', { class: 'sidebar-label' }, `Colors (${colors.length})`),
+                h('span', { class: 'sidebar-label' }, `2. Colors (${colors.length})`),
                 
                 // Contrast Mode Selector
                 h('div', { style: 'margin-bottom: 0.5rem; display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;' }, [
@@ -1715,7 +1730,7 @@ const App = () => {
             ])
 
             ,
-            // 4. Finalize (Accordion)
+            // 3. Finalize (Accordion)
             h('div', { class: 'accordion', role: 'region', 'aria-expanded': accordionState.finalize ? 'true' : 'false', id: 'finalize-accordion' }, [
                 h('div', { class: 'accordion-header', onClick: (e) => {
                     const next = { ...accordionState, finalize: !accordionState.finalize };
@@ -1808,8 +1823,8 @@ const App = () => {
 
             // Editor resizer handle
             h('div', { class: 'editor-resizer', onMouseDown: handleEditorResizerMouseDown, onTouchStart: handleEditorResizerMouseDown }),
-            // Bottom editor with tabbed layout
-            h('div', { class: 'bottom-editor', onMouseMove: handleCodePointer, onMouseLeave: handleEditorMouseLeave }, [
+            // Bottom editor with tabbed layout (taller when viewing Optimized)
+            h('div', { class: `bottom-editor${activeEditorTab === 'optimized' ? ' large' : ''}` }, [
                 h('div', { class: 'editor-tabs', role: 'tablist' }, editorTabs.map(tab => h('button', {
                     key: tab.id,
                     type: 'button',
@@ -1824,26 +1839,57 @@ const App = () => {
                     h('span', { class: 'tab-hint' }, tab.hint)
                 ]))),
                 h('div', { class: 'editor-body' }, [
-                    activeEditorTab === 'original' && h('div', { class: 'code-panel', role: 'tabpanel', id: 'panel-original', 'aria-labelledby': 'tab-original' }, [
-                        h('pre', { class: 'code-viewport', dangerouslySetInnerHTML: { __html: originalHtml || '&nbsp;' } })
+                    activeEditorTab === 'original' && h('div', { class: 'code-panel raw-input-panel', role: 'tabpanel', id: 'panel-original', 'aria-labelledby': 'tab-original' }, [
+                        currentFileName && h('div', { class: 'loaded-file' }, `Loaded: ${currentFileName}`),
+                        h('textarea', {
+                            class: 'raw-input-textarea',
+                            value: canonicalOriginal,
+                            spellcheck: false,
+                            onInput: (e) => {
+                                const next = e.target.value;
+                                setCurrentFileName('');
+                                setOriginalCode(next);
+                                if (rawInputTimerRef.current) clearTimeout(rawInputTimerRef.current);
+                                rawInputTimerRef.current = setTimeout(() => {
+                                    ingestOriginalInput(next, 'Source updated');
+                                }, 400);
+                            },
+                            onDragOver: handleDragOver,
+                            onDrop: handleDrop,
+                            placeholder: 'Paste SVG or drag file here...',
+                            'aria-label': 'Original raw SVG input'
+                        })
                     ]),
                     activeEditorTab === 'beautified' && h('div', { class: 'code-panel is-editable', role: 'tabpanel', id: 'panel-beautified', 'aria-labelledby': 'tab-beautified' }, [
                         h('div', { class: 'code-shell' }, [
-                            h('pre', { class: 'code-ghost', ref: beautifiedOverlayRef, dangerouslySetInnerHTML: { __html: beautifiedHtml || '&nbsp;' } }),
                             h('textarea', {
                                 ref: beautifiedTextareaRef,
-                                value: canonicalBeautified,
-                                onInput: (e) => commitBeautifiedChange(e.target.value, 'Beautified updated'),
-                                onScroll: handleBeautifiedScroll,
+                                value: beautifiedDisplay,
+                                onInput: (e) => {
+                                    const incoming = e.target.value;
+                                    const trimmed = incoming.endsWith(BEAUTIFIED_DISPLAY_SUFFIX)
+                                        ? incoming.slice(0, -BEAUTIFIED_DISPLAY_SUFFIX.length)
+                                        : incoming;
+                                    commitBeautifiedChange(trimmed, 'Beautified updated');
+                                },
                                 spellcheck: false,
+                                wrap: 'off',
                                 'aria-label': 'Beautified SVG editor'
                             })
                         ])
                     ]),
-                    activeEditorTab === 'optimized' && h('div', { class: 'code-panel', role: 'tabpanel', id: 'panel-optimized', 'aria-labelledby': 'tab-optimized' }, [
-                        h('pre', { class: 'code-viewport', dangerouslySetInnerHTML: { __html: optimizedHtml || '&nbsp;' } })
-                    ]),
-                    h('div', { class: 'editor-footnote' }, 'Beautified edits drive previews, lint, and theming.')
+                    activeEditorTab === 'optimized' && h('div', { class: 'code-panel is-optimized', role: 'tabpanel', id: 'panel-optimized', 'aria-labelledby': 'tab-optimized' }, [
+                        h('div', { class: 'code-shell read-only' }, [
+                            h('textarea', {
+                                ref: optimizedTextareaRef,
+                                value: optimizedDisplay,
+                                readOnly: true,
+                                spellcheck: false,
+                                wrap: 'soft',
+                                'aria-label': 'Optimized SVG output'
+                            })
+                        ])
+                    ])
                 ]),
                 recentHighlightTokens.length > 0 && (() => {
                     const hoveredHex = normalizeHex(hoveredColor);

@@ -84,6 +84,112 @@ header p {
     flex-shrink: 0;
 }
 
+.sidebar-note {
+    margin: 0;
+    font-size: 0.85rem;
+    color: #3c6f44;
+}
+
+.input-card {
+    border: 1px solid #2e7d32;
+    background: #e8f5e9;
+    border-radius: 8px;
+    padding: 0.75rem;
+}
+
+.dropzone {
+    margin-top: 0.5rem;
+    border: 2px dashed #2e7d32;
+    background: rgba(46, 125, 50, 0.08);
+    color: #1b5e20;
+    border-radius: 8px;
+    padding: 0.9rem;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.dropzone:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 3px;
+}
+
+.dropzone:hover {
+    border-color: #1b5e20;
+    background: rgba(46, 125, 50, 0.15);
+}
+
+.dropzone-title {
+    font-weight: 700;
+    margin-bottom: 0.25rem;
+}
+
+.dropzone-hint {
+    font-size: 0.85rem;
+    color: #1b5e20;
+}
+
+.input-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+}
+
+.intent-card {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.75rem;
+    background: var(--card-bg);
+}
+
+.intent-inline {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.meta-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.meta-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    font-size: 0.85rem;
+}
+
+.meta-field input,
+.meta-field textarea {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.5rem;
+    font-family: var(--editor-font, "JetBrains Mono", "IBM Plex Mono", SFMono-Regular, monospace);
+    font-size: 0.9rem;
+    background: #0f1115;
+    color: #f8f8f2;
+}
+
+.meta-field textarea {
+    resize: vertical;
+    min-height: 60px;
+}
+
+.meta-hint {
+    margin: 0;
+    font-size: 0.85rem;
+    color: #8a6d3b;
+}
+
+.meta-hint.warning {
+    color: #b94a48;
+}
+
 /* Sidebar resizer (between sidebar and main content) */
 .sidebar-resizer {
     width: 8px;
@@ -526,9 +632,14 @@ dialog h3 { margin-top: 0; }
     display: flex;
     flex-direction: column;
     min-height: 240px;
-    max-height: 60vh;
+    height: 70vh;
+    max-height: 85vh;
     box-shadow: 0 18px 36px rgba(0, 0, 0, 0.08);
     overflow: hidden;
+}
+
+.bottom-editor.large {
+    height: 75vh;
 }
 
 .editor-tabs {
@@ -585,6 +696,70 @@ dialog h3 { margin-top: 0; }
     min-height: 0;
     background: #050505;
     color: #f8f8f2;
+    display: flex;
+    flex-direction: column;
+}
+
+.code-panel.raw-input-panel {
+    background: var(--bg-body);
+    color: var(--text-body);
+    padding: 0.75rem 1rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.raw-input-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.raw-input-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.raw-input-actions {
+    display: flex;
+    gap: 0.4rem;
+}
+
+.raw-input-textarea {
+    flex: 1;
+    min-height: 180px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.75rem;
+    font-family: var(--editor-font, "JetBrains Mono", "IBM Plex Mono", SFMono-Regular, monospace);
+    font-size: 0.9rem;
+    resize: vertical;
+    background: #0f1115;
+    color: #f8f8f2;
+}
+
+.raw-input-textarea:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+}
+
+.intent-widget.compact {
+    border-radius: 4px;
+    padding: 0.4rem 0.5rem;
+}
+
+.loaded-file {
+    font-size: 0.75rem;
+    color: #666;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.drag-hint {
+    font-size: 0.8rem;
+    color: #6c757d;
 }
 
 .editor-body > .code-panel {
@@ -605,24 +780,34 @@ dialog h3 { margin-top: 0; }
     min-height: 0;
     background: #050505;
     border-top: 1px solid rgba(255, 255, 255, 0.05);
+    display: flex;
 }
 
 .code-shell textarea {
-    position: absolute;
-    inset: 0;
+    flex: 1;
     width: 100%;
     height: 100%;
     border: none;
     resize: none;
+    color: #f8f8f2;
+    text-shadow: none;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
     background: transparent;
     font-family: var(--editor-font, "JetBrains Mono", "IBM Plex Mono", SFMono-Regular, monospace);
     font-size: 0.85rem;
     line-height: 1.4;
-    color: #f8f8f2;
     padding: 1rem;
-    z-index: 1;
+    padding-bottom: 1.75rem;
     outline: none;
     caret-color: var(--primary);
+    tab-size: 2;
+}
+
+.code-shell.read-only textarea {
+    cursor: text;
+    line-height: 1.25;
+    padding-bottom: 1rem;
 }
 
 .code-shell textarea:focus-visible {
@@ -630,40 +815,7 @@ dialog h3 { margin-top: 0; }
     outline-offset: -2px;
 }
 
-.code-ghost {
-    position: absolute;
-    inset: 0;
-    padding: 1rem;
-    font-family: var(--editor-font, "JetBrains Mono", "IBM Plex Mono", SFMono-Regular, monospace);
-    font-size: 0.85rem;
-    line-height: 1.4;
-    white-space: pre-wrap;
-    word-break: break-word;
-    overflow: auto;
-    color: transparent;
-    pointer-events: none;
-    z-index: 0;
-}
 
-.code-viewport {
-    margin: 0;
-    padding: 1rem;
-    font-family: var(--editor-font, "JetBrains Mono", "IBM Plex Mono", SFMono-Regular, monospace);
-    font-size: 0.85rem;
-    line-height: 1.4;
-    white-space: pre-wrap;
-    word-break: break-word;
-    height: 100%;
-    overflow: auto;
-    background: #050505;
-    color: #f6f6f6;
-}
-
-.bottom-editor mark[data-token] {
-    background: rgba(255, 152, 0, 0.35);
-    border-radius: 2px;
-    padding: 0 2px;
-}
 
 .editor-footnote {
     padding: 0.55rem 1rem;
