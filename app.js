@@ -303,6 +303,15 @@ const App = () => {
     const editorTimerRef = useRef(null);
     const [editorCode, setEditorCode] = useState('');
     const [lintResults, setLintResults] = useState([]);
+    const [lintPanelVisible, setLintPanelVisible] = useState(() => {
+        try {
+            const stored = localStorage.getItem('lintPanelVisible');
+            if (stored === 'false') return false;
+            if (stored === 'true') return true;
+        } catch (e) {}
+        return true;
+    });
+    const lintListRef = useRef(null);
     const [accordionState, setAccordionState] = useState(() => {
         try {
             return JSON.parse(localStorage.getItem('accordionState') || '{"finalize":true}');
@@ -929,6 +938,31 @@ const App = () => {
         }
     };
 
+    // Keyboard navigation for lint list: Up/Down to move, Enter to trigger Fix
+    const handleLintKeyDown = (e) => {
+        const container = lintListRef.current;
+        if (!container) return;
+        const items = container.querySelectorAll('.lint-item');
+        if (!items || items.length === 0) return;
+        const active = document.activeElement;
+        let idx = Array.prototype.indexOf.call(items, active);
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            const next = Math.min(items.length - 1, Math.max(0, idx + 1));
+            items[next].focus();
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            const prev = Math.max(0, (idx === -1 ? 0 : idx) - 1);
+            items[prev].focus();
+        } else if (e.key === 'Enter' || e.key === ' ') {
+            // trigger Fix button inside focused item
+            if (active && active.classList && active.classList.contains('lint-item')) {
+                const btn = active.querySelector('button.small');
+                if (btn) btn.click();
+            }
+        }
+    };
+
     // --- Effects ---
 
     // Keep the editorCode in sync with the latest processed optimized code
@@ -1040,6 +1074,14 @@ const App = () => {
             // ignore storage errors
         }
     }, [darkModeColors, previewSplit, filterTextOnly]);
+
+    useEffect(() => {
+        try {
+            localStorage.setItem('lintPanelVisible', lintPanelVisible ? 'true' : 'false');
+        } catch (e) {
+            // ignore
+        }
+    }, [lintPanelVisible]);
 
     useEffect(() => {
         if (svgInput && intent) {
@@ -1564,17 +1606,89 @@ const App = () => {
                     placeholder: 'Optimized SVG will appear here. Edit to update the previews live.'
                 })
             ]),
-            // Lint panel
-            h('div', { class: 'lint-panel', style: 'margin-top:0.5rem; padding:0.5rem; border-top:1px solid #eee;' }, [
-                h('div', { style: 'font-weight:600; margin-bottom:0.25rem;' }, `Lint: ${lintResults.length} issue${lintResults.length !== 1 ? 's' : ''}`),
-                lintResults.length === 0 && h('div', { style: 'color: #2b8a3e;' }, 'No issues found'),
-                lintResults.map((it, idx) => h('div', { key: idx, style: `color:${it.level==='error'?'#a41e22':'#8a6d1a'}; font-size:0.9rem; margin-top:0.2rem; display:flex; justify-content:space-between; align-items:center;` }, [
-                    h('div', {}, `${it.level.toUpperCase()}: ${it.message}`),
-                    it.type === 'color' && it.suggested ? h('div', {}, [
-                        h('span', { style: 'font-size:0.8rem;color:#444;margin-right:0.5rem;' }, `suggest: ${it.suggested}`),
-                        h('button', { class: 'small', onClick: () => applyColorFix((it.originals && it.originals[0]) || it.hex, it.suggested) }, 'Fix')
-                    ]) : null
-                ]))
+            // Lint panel (combined color issues + scrollable list)
+            (lintPanelVisible && lintResults.length > 0 ? (function() {
+                // Combine WCAG + APCA issues that refer to the same color hex
+                const combined = [];
+                const colorMap = new Map();
+                lintResults.forEach(it => {
+                    if (it && it.type === 'color' && it.hex) {
+                        const key = it.hex.toLowerCase();
+                        const entry = colorMap.get(key) || { type: 'color', hex: key, messages: [], originals: new Set(), suggested: null };
+                        entry.messages.push(it.message || '');
+                        (it.originals || []).forEach(o => entry.originals.add(o));
+                        // prefer a suggested color that exists; keep one (we'll reconcile below)
+                        if (it.suggested && !entry.suggested) entry.suggested = it.suggested;
+                        colorMap.set(key, entry);
+                    } else if (it) {
+                        combined.push(it);
+                    }
+                });
+                for (const v of colorMap.values()) {
+                    // Attempt to pick a suggestion that satisfies both WCAG & APCA when possible
+                    const hex = v.hex;
+                    const isText = true; // conservative: assume text-level importance when aggregated
+                    const suggestedWCAG = suggestAccessibleColor(hex, bgLight, bgDark, isText, 'wcag');
+                    const suggestedAPCA = suggestAccessibleColor(hex, bgLight, bgDark, isText, 'apca');
+                    // helper to test both
+                    const passesBoth = (cand) => {
+                        try {
+                            const r1 = getWCAGLevel(Math.min(getContrastRatio(cand, bgLight), getContrastRatio(cand, bgDark)), isText, false);
+                            const ap1 = Math.min(Math.abs(getAPCAContrast(cand, bgLight)), Math.abs(getAPCAContrast(cand, bgDark)));
+                            return (r1 === 'AA' || r1 === 'AAA') && ap1 >= 75;
+                        } catch (e) { return false; }
+                    };
+                    let chosen = v.suggested || suggestedWCAG || suggestedAPCA;
+                    if (suggestedWCAG && passesBoth(suggestedWCAG)) chosen = suggestedWCAG;
+                    else if (suggestedAPCA && passesBoth(suggestedAPCA)) chosen = suggestedAPCA;
+                    v.suggested = chosen;
+                    v.originals = Array.from(v.originals);
+                    // create a combined message string
+                    v.message = v.messages && v.messages.length ? v.messages.join(' — ') : `Color ${v.hex} has contrast issues`;
+                    combined.push(v);
+                }
+
+                // sort combined so more severe (errors) first, then warnings; keep stable order
+                combined.sort((a,b) => {
+                    const la = (a.level === 'error') ? 0 : 1;
+                    const lb = (b.level === 'error') ? 0 : 1;
+                    return la - lb;
+                });
+
+                return h('div', { class: 'lint-panel', role: 'region', 'aria-label': 'Lint results' }, [
+                    h('div', { class: 'lint-header' }, [
+                        h('span', { class: 'lint-title' }, `Lint: ${lintResults.length} issue${lintResults.length !== 1 ? 's' : ''}`),
+                        h('button', { class: 'lint-close', onClick: () => setLintPanelVisible(false), 'aria-label': 'Hide lint panel' }, '×')
+                    ]),
+                    combined.length === 0 && h('div', { style: 'color: #2b8a3e; padding:0.5rem;' }, 'No issues found'),
+                    // show first two items inline (non-scrollable)
+                    h('div', { class: 'lint-top' }, combined.slice(0,2).map((it, idx) => h('div', { key: 'top-'+idx, class: 'lint-item lint-top-item', role: 'listitem', tabIndex: 0, 'aria-label': `${it.hex || ''} issues`, onKeyDown: handleLintKeyDown }, [
+                        // message split by standard if message contains both
+                        h('div', { class: 'lint-message' }, Array.isArray(it.messages) ? it.messages.map((m,i) => h('div', { key: 'm-'+i }, m)) : (it.message || '')),
+                        h('div', { class: 'lint-action' }, [
+                            h('span', { class: 'suggest' }, it.suggested || ''),
+                            h('button', { class: 'small', onClick: () => applyColorFix((it.originals && it.originals[0]) || it.hex, it.suggested || it.hex), 'aria-label': `Fix color ${it.hex || ''}` }, 'Fix')
+                        ])
+                    ]))),
+                    // scrollable remainder with keyboard nav
+                    h('div', { class: 'lint-list', role: 'list', ref: lintListRef, tabIndex: 0, onKeyDown: handleLintKeyDown }, combined.slice(2).map((it, idx) => h('div', { key: 'rest-'+idx, class: 'lint-item', role: 'listitem', tabIndex: 0, 'aria-label': `${it.hex || ''} issues` }, [
+                        h('div', { class: 'lint-message' }, Array.isArray(it.messages) ? it.messages.map((m,i) => h('div', { key: 'm-'+i }, m)) : (it.message || '')),
+                        h('div', { class: 'lint-action' }, [
+                            h('span', { class: 'suggest' }, it.suggested || ''),
+                            h('button', { class: 'small', onClick: () => applyColorFix((it.originals && it.originals[0]) || it.hex, it.suggested || it.hex), 'aria-label': `Fix color ${it.hex || ''}` }, 'Fix')
+                        ])
+                    ])))
+                ]);
+            })() : null),
+
+            lintResults.length > 0 && !lintPanelVisible && h('button', {
+                class: 'lint-indicator',
+                onClick: () => setLintPanelVisible(true),
+                'aria-pressed': lintPanelVisible,
+                'aria-label': 'Show lint panel'
+            }, [
+                h('span', { class: 'lint-indicator-dot' }),
+                h('span', { class: 'lint-indicator-text' }, `Lint issues: ${lintResults.length}`)
             ]),
 
             // (Optimized code moved to bottom editor)

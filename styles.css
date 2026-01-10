@@ -405,6 +405,102 @@ dialog h3 { margin-top: 0; }
     border: 0;
 }
 
+/* Lint panel styles: fixed header, two inline warnings, scrollable list */
+.lint-panel {
+    margin-top: 0.5rem;
+    padding: 0.25rem;
+    border-top: 1px solid var(--border);
+    background: var(--bg-body);
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    overflow-y: auto;
+}
+.lint-panel .lint-header {
+    font-weight: 600;
+    padding: 0.35rem 0.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+.lint-panel .lint-top {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    padding: 0 0.5rem;
+}
+.lint-panel {
+    --lint-list-max: 28vh; /* default responsive max-height */
+}
+.lint-panel {
+    /* Defensive: cap the overall panel height so older markup without .lint-list still scrolls */
+    max-height: var(--lint-list-max);
+    overflow: auto;
+    box-sizing: border-box;
+}
+.lint-title { font-weight: 600; }
+.lint-close {
+    background: transparent;
+    border: none;
+    font-size: 1.1rem;
+    cursor: pointer;
+    color: var(--text-body);
+    line-height: 1;
+    padding: 0.1rem 0.35rem;
+}
+.lint-close:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.lint-panel .lint-list {
+    max-height: var(--lint-list-max); /* responsive max-height */
+    overflow: auto;
+    padding: 0.25rem 0.5rem 0.5rem 0.5rem;
+    border-top: 1px dashed var(--border);
+}
+.lint-item { display:flex; justify-content:space-between; align-items:center; padding:0.35rem 0; }
+.lint-top-item { background: rgba(0,0,0,0.02); padding:0.4rem; border-radius:6px; }
+.lint-message { color: var(--text-body); font-size: 0.95rem; flex:1; }
+.lint-action { display:flex; align-items:center; gap:0.5rem; margin-left:0.6rem; }
+.lint-action .suggest { font-size:0.82rem; color:#444; }
+
+/* Scrollbar styling (WebKit) */
+.lint-panel .lint-list::-webkit-scrollbar { width: 12px; height: 12px; }
+.lint-panel .lint-list::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); border-radius: 8px; border: 3px solid transparent; background-clip: padding-box; }
+.lint-panel .lint-list::-webkit-scrollbar-track { background: transparent; }
+
+/* Firefox scrollbar */
+@supports (scrollbar-width: thin) {
+    .lint-panel .lint-list { scrollbar-width: thin; scrollbar-color: rgba(0,0,0,0.12) transparent; }
+}
+
+.lint-indicator {
+    position: fixed;
+    right: 1rem;
+    bottom: 1rem;
+    background: #f6c343;
+    color: #3b2e02;
+    border: none;
+    border-radius: 999px;
+    padding: 0.45rem 0.85rem;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-weight: 600;
+    cursor: pointer;
+    z-index: 200;
+}
+.lint-indicator.open {
+    background: #f0b429;
+}
+.lint-indicator-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: currentColor;
+    box-shadow: 0 0 0 3px rgba(0,0,0,0.1);
+}
+.lint-indicator-text { font-size: 0.85rem; }
+
 /* Accordion controls in sidebar */
 .accordion {
     border: 1px solid var(--border);
