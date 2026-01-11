@@ -47,6 +47,21 @@ function beautifySvg(svg) {
     }
 }
 
+// Extract first <title> and <desc> text from an SVG string
+function extractMetaFromSvg(svg) {
+    try {
+        const doc = new DOMParser().parseFromString(svg || '', 'image/svg+xml');
+        const t = doc.querySelector('title');
+        const d = doc.querySelector('desc');
+        return {
+            title: (t && t.textContent) ? t.textContent.trim() : '',
+            desc: (d && d.textContent) ? d.textContent.trim() : ''
+        };
+    } catch (e) {
+        return { title: '', desc: '' };
+    }
+}
+
 const BEAUTIFIED_DISPLAY_SUFFIX = '\n\n\n\n\n';
 const OPTIMIZED_DISPLAY_SUFFIX = '\n\n';
 
@@ -1086,6 +1101,10 @@ const App = () => {
 
             setProcessedSvg({ code: finalCode, light: lightCode, dark: darkCode });
             setOptimizedCode(finalCode);
+            // Keep editable view in sync with optimized output
+            const beautifiedFinal = beautifySvg(finalCode);
+            setBeautifiedCode(beautifiedFinal);
+            setSvgInput(beautifiedFinal);
             setA11yStatus(`SVG processed successfully at ${new Date().toLocaleTimeString()}`);
 
         } catch (e) {
@@ -1098,6 +1117,14 @@ const App = () => {
         const code = newCode || '';
         setBeautifiedCode(code);
         setSvgInput(code);
+        // Keep meta in sync if user edits SVG code directly
+        const parsedMeta = extractMetaFromSvg(code);
+        const nextTitle = parsedMeta.title || '';
+        const nextDesc = parsedMeta.desc || '';
+        if (nextTitle !== meta.title || nextDesc !== meta.desc) {
+            setMeta({ title: nextTitle, desc: nextDesc });
+            setIntent(nextTitle ? 'informational' : 'decorative');
+        }
         try {
             setLintResults(lintSvg(code));
         } catch (er) {
