@@ -1,5 +1,5 @@
 import { h, render } from 'https://esm.sh/preact@10.19.3';
-import { useState, useEffect, useRef, useMemo } from 'https://esm.sh/preact@10.19.3/hooks';
+import { useState, useEffect, useRef, useMemo, useLayoutEffect } from 'https://esm.sh/preact@10.19.3/hooks';
 import { optimize } from 'https://esm.sh/svgo@3.2.0/dist/svgo.browser.js';
 import xmlFormatter from 'https://esm.sh/xml-formatter@3.6.0';
 
@@ -30,318 +30,22 @@ function formatXml(xml) {
 function beautifySvg(svg) {
     if (!svg) return '';
     try {
-        // First try a dedicated XML formatter for stable indentation
-        return xmlFormatter(svg, { indentation: '  ', lineSeparator: '\n' }).trim();
+        const formatted = xmlFormatter(svg, { indentation: '  ', lineSeparator: '\n' });
+        return formatted.endsWith('\n') ? formatted : `${formatted}\n`;
     } catch (e) {
-        // Fallback to DOM parse + simple formatter
         try {
             const parser = new DOMParser();
             const doc = parser.parseFromString(svg, 'image/svg+xml');
             if (doc.querySelector('parsererror')) return svg;
             const serializer = new XMLSerializer();
             const raw = serializer.serializeToString(doc);
-            return formatXml(raw);
+            const formatted = formatXml(raw);
+            return formatted.endsWith('\n') ? formatted : `${formatted}\n`;
         } catch (err) {
             return svg;
         }
     }
 }
-
-// Extract first <title> and <desc> text from an SVG string
-function extractMetaFromSvg(svg) {
-    try {
-        const doc = new DOMParser().parseFromString(svg || '', 'image/svg+xml');
-        const t = doc.querySelector('title');
-        const d = doc.querySelector('desc');
-        return {
-            title: (t && t.textContent) ? t.textContent.trim() : '',
-            desc: (d && d.textContent) ? d.textContent.trim() : ''
-        };
-    } catch (e) {
-        return { title: '', desc: '' };
-    }
-}
-
-const BEAUTIFIED_DISPLAY_SUFFIX = '\n\n\n\n\n';
-const OPTIMIZED_DISPLAY_SUFFIX = '\n\n';
-
-function normalizeHex(hex) {
-    if (!hex) return null;
-    const h = hex.trim().toLowerCase();
-    if (/^#([0-9a-f]{3}){1,2}$/i.test(h)) {
-        if (h.length === 4) {
-            return `#${h[1]}${h[1]}${h[2]}${h[2]}${h[3]}${h[3]}`;
-        }
-        return h;
-    }
-    return null;
-}
-
-function normalizeColorToken(token) {
-    if (!token) return null;
-    const direct = normalizeHex(token);
-    if (direct) return direct;
-    if (token === 'none') return null;
-    try {
-        const ctx = document.createElement('canvas').getContext('2d');
-        ctx.fillStyle = token;
-        const computed = ctx.fillStyle; // returns rgb(...)
-        if (computed.startsWith('#')) return normalizeHex(computed);
-        if (computed.startsWith('rgb')) {
-            const nums = computed.match(/\d+/g);
-            if (!nums) return null;
-            const [r, g, b] = nums.map(n => Number(n));
-            const hex = '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
-            return hex;
-        }
-    } catch (e) {
-        return null;
-    }
-    return null;
-}
-
-// ===== WCAG 2.2 CONTRAST RATIO (Relative Luminance Method) =====
-function getContrastRatio(hex1, hex2) {
-    const lum1 = getLuminance(hex1);
-    const lum2 = getLuminance(hex2);
-    const bright = Math.max(lum1, lum2);
-    const dark = Math.min(lum1, lum2);
-    return (bright + 0.05) / (dark + 0.05);
-}
-
-function getLuminance(hex) {
-    const rgb = parseInt(hex.slice(1), 16);
-    const r = (rgb >> 16) & 0xff;
-    const g = (rgb >>  8) & 0xff;
-    const b = (rgb >>  0) & 0xff;
-    
-    const [sr, sg, sb] = [r, g, b].map(c => {
-        c /= 255;
-        return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-    });
-    return 0.2126 * sr + 0.7152 * sg + 0.0722 * sb;
-}
-
-// ===== APCA CONTRAST (Accessible Perceptual Contrast Algorithm) =====
-// More perceptually accurate than WCAG 2.2, used in WCAG 3.0 (draft)
-// Returns Lc (Lightness Contrast) value
-function getAPCAContrast(hex1, hex2) {
-    const y1 = getRelativeLuminanceAPCA(hex1);
-    const y2 = getRelativeLuminanceAPCA(hex2);
-    
-    const lighter = Math.max(y1, y2);
-    const darker = Math.min(y1, y2);
-    
-    // APCA formula: (lighter - darker) * 0.37
-    const lc = (lighter - darker) * 0.37;
-    
-    // Return signed value: positive if hex1 is lighter, negative if darker
-    return y1 > y2 ? Math.abs(lc) : -Math.abs(lc);
-}
-
-function getRelativeLuminanceAPCA(hex) {
-    const rgb = parseInt(hex.slice(1), 16);
-    const r = (rgb >> 16) & 0xff;
-    const g = (rgb >>  8) & 0xff;
-    const b = (rgb >>  0) & 0xff;
-    
-    const [sr, sg, sb] = [r, g, b].map(c => {
-        c /= 255;
-        return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-    });
-    
-    // APCA uses BT.2020 coefficients (more accurate than WCAG 2.2)
-    return 0.2126 * sr + 0.7152 * sg + 0.0722 * sb;
-}
-
-// Color helpers: hex <-> rgb, rgb <-> hsl
-function hexToRgb(hex) {
-    const parsed = parseInt(hex.slice(1), 16);
-    return { r: (parsed >> 16) & 255, g: (parsed >> 8) & 255, b: parsed & 255 };
-}
-
-function rgbToHex({ r, g, b }) {
-    return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
-}
-
-function rgbToHsl({ r, g, b }) {
-    r /= 255; g /= 255; b /= 255;
-    const max = Math.max(r, g, b), min = Math.min(r, g, b);
-    let h, s, l = (max + min) / 2;
-    if (max === min) { h = s = 0; } else {
-        const d = max - min;
-        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-        switch (max) {
-            case r: h = (g - b) / d + (g < b ? 6 : 0); break;
-            case g: h = (b - r) / d + 2; break;
-            case b: h = (r - g) / d + 4; break;
-        }
-        h /= 6;
-    }
-    return { h: h * 360, s: s * 100, l: l * 100 };
-}
-
-function hslToRgb({ h, s, l }) {
-    h /= 360; s /= 100; l /= 100;
-    if (s === 0) {
-        const v = Math.round(l * 255);
-        return { r: v, g: v, b: v };
-    }
-    const hue2rgb = (p, q, t) => {
-        if (t < 0) t += 1;
-        if (t > 1) t -= 1;
-        if (t < 1/6) return p + (q - p) * 6 * t;
-        if (t < 1/2) return q;
-        if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
-        return p;
-    };
-    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-    const p = 2 * l - q;
-    const r = Math.round(hue2rgb(p, q, h + 1/3) * 255);
-    const g = Math.round(hue2rgb(p, q, h) * 255);
-    const b = Math.round(hue2rgb(p, q, h - 1/3) * 255);
-    return { r, g, b };
-}
-
-// Suggest an accessible color by adjusting lightness toward black/white until contrast passes
-function suggestAccessibleColor(hex, bgLight, bgDark, isText, contrastMode) {
-    const thresholds = { wcag: isText ? 4.5 : 3, apca: isText ? 75 : 60 };
-    const start = hexToRgb(hex);
-    const hsl = rgbToHsl(start);
-
-    // Prefer hue-preserving adjustments: adjust lightness first, then saturation, then small hue nudges.
-
-    // Prefer hue-preserving adjustments: adjust lightness first, then saturation if needed.
-    const maxSteps = 30;
-    for (let step = 1; step <= maxSteps; step++) {
-        // subtle lightness moves (both directions)
-        const delta = step * 1.5; // small increments
-        const tryLs = [Math.min(100, hsl.l + delta), Math.max(0, hsl.l - delta)];
-        for (let tryL of tryLs) {
-            const tryHex = rgbToHex(hslToRgb({ h: hsl.h, s: hsl.s, l: tryL }));
-            if (contrastMode === 'wcag') {
-                const r = Math.min(getContrastRatio(tryHex, bgLight), getContrastRatio(tryHex, bgDark));
-                if (r >= thresholds.wcag) return tryHex;
-            } else {
-                const lc = Math.min(Math.abs(getAPCAContrast(tryHex, bgLight)), Math.abs(getAPCAContrast(tryHex, bgDark)));
-                if (lc >= thresholds.apca) return tryHex;
-            }
-        }
-    }
-
-    // If lightness-only adjustments fail, try reducing saturation (toward gray) while preserving hue
-    for (let step = 1; step <= 20; step++) {
-        const newS = Math.max(0, hsl.s - step * 4);
-        const tryHex = rgbToHex(hslToRgb({ h: hsl.h, s: newS, l: hsl.l }));
-        if (contrastMode === 'wcag') {
-            const r = Math.min(getContrastRatio(tryHex, bgLight), getContrastRatio(tryHex, bgDark));
-            if (r >= thresholds.wcag) return tryHex;
-        } else {
-            const lc = Math.min(Math.abs(getAPCAContrast(tryHex, bgLight)), Math.abs(getAPCAContrast(tryHex, bgDark)));
-            if (lc >= thresholds.apca) return tryHex;
-        }
-    }
-
-    // Next: try small hue nudges with preserved saturation/lightness
-    for (let dh = -18; dh <= 18; dh += 3) {
-        for (let dl = -12; dl <= 12; dl += 3) {
-            const tryH = (hsl.h + dh + 360) % 360;
-            const tryL = Math.min(100, Math.max(0, hsl.l + dl));
-            const tryHex = rgbToHex(hslToRgb({ h: tryH, s: hsl.s, l: tryL }));
-            if (contrastMode === 'wcag') {
-                const r = Math.min(getContrastRatio(tryHex, bgLight), getContrastRatio(tryHex, bgDark));
-                if (r >= thresholds.wcag) return tryHex;
-            } else {
-                const lc = Math.min(Math.abs(getAPCAContrast(tryHex, bgLight)), Math.abs(getAPCAContrast(tryHex, bgDark)));
-                if (lc >= thresholds.apca) return tryHex;
-            }
-        }
-    }
-
-    // Last resort: try black/white fallback
-    const white = '#ffffff';
-    const black = '#000000';
-    if (contrastMode === 'wcag') {
-        const wr = Math.min(getContrastRatio(white, bgLight), getContrastRatio(white, bgDark));
-        if (wr >= thresholds.wcag) return white;
-        const br = Math.min(getContrastRatio(black, bgLight), getContrastRatio(black, bgDark));
-        if (br >= thresholds.wcag) return black;
-    } else {
-        const wl = Math.min(Math.abs(getAPCAContrast(white, bgLight)), Math.abs(getAPCAContrast(white, bgDark)));
-        if (wl >= thresholds.apca) return white;
-        const bl = Math.min(Math.abs(getAPCAContrast(black, bgLight)), Math.abs(getAPCAContrast(black, bgDark)));
-        if (bl >= thresholds.apca) return black;
-    }
-    for (let dh = -30; dh <= 30; dh += 6) {
-        for (let dl = -20; dl <= 20; dl += 4) {
-            const tryH = (hsl.h + dh + 360) % 360;
-            const tryL = Math.min(100, Math.max(0, hsl.l + dl));
-            const tryHex = rgbToHex(hslToRgb({ h: tryH, s: hsl.s, l: tryL }));
-            if (contrastMode === 'wcag') {
-                const r = Math.min(getContrastRatio(tryHex, bgLight), getContrastRatio(tryHex, bgDark));
-                if (r >= thresholds.wcag) return tryHex;
-            } else {
-                const lc = Math.min(Math.abs(getAPCAContrast(tryHex, bgLight)), Math.abs(getAPCAContrast(tryHex, bgDark)));
-                if (lc >= thresholds.apca) return tryHex;
-            }
-        }
-    }
-
-    return hex; // no good suggestion found
-}
-
-// Helper: Detect if an element contains text
-function isTextElement(element) {
-    const tagName = element.tagName.toLowerCase();
-    // Direct text elements
-    if (tagName === 'text' || tagName === 'tspan') return true;
-    
-    // Check if element contains text nodes or has text content
-    if (element.childNodes.length > 0) {
-        for (let node of element.childNodes) {
-            if (node.nodeType === 3 && node.textContent.trim().length > 0) return true; // Text node
-            if (node.nodeType === 1 && isTextElement(node)) return true; // Recursive check
-        }
-    }
-    return false;
-}
-
-// Helper: Get font size from element (in pixels)
-function getFontSize(element) {
-    const style = window.getComputedStyle ? window.getComputedStyle(element) : null;
-    if (style && style.fontSize) {
-        const size = parseFloat(style.fontSize);
-        return size;
-    }
-    
-    // Fallback: check font-size attribute
-    const sizeAttr = element.getAttribute('font-size');
-    if (sizeAttr) {
-        return parseFloat(sizeAttr);
-    }
-    
-    return 12; // Default
-}
-
-// Helper: Is text large (18pt or 14pt bold)
-function isLargeText(element) {
-    const fontSize = getFontSize(element);
-    const fontWeight = element.getAttribute('font-weight') || '';
-    const isBold = fontWeight === 'bold' || parseInt(fontWeight) >= 700;
-    
-    // 18pt = ~24px, 14pt = ~18.67px
-    return (fontSize >= 24) || (fontSize >= 18 && isBold);
-}
-
-// Helper: Get APCA level (based on Lc value)
-// APCA levels (absolute value): 90+ AAA, 75+ AA, 60+ Fail
-function getAPCALevel(lc) {
-    const absLc = Math.abs(lc);
-    if (absLc >= 90) return 'AAA';
-    if (absLc >= 75) return 'AA';
-    return 'Fail';
-}
-
 // Helper: Get WCAG 2.2 AA level (text vs non-text)
 function getWCAGLevel(ratio, isText = false, isLarge = false) {
     if (isText) {
@@ -366,12 +70,15 @@ function getWCAGLevel(ratio, isText = false, isLarge = false) {
 const App = () => {
     const [svgInput, setSvgInput] = useState('');
     const [processedSvg, setProcessedSvg] = useState({ code: '', light: '', dark: '' });
+    const [previewOriginal, setPreviewOriginal] = useState({ light: '', dark: '' });
+    const [previewBeautified, setPreviewBeautified] = useState({ light: '', dark: '' });
     const [intent, setIntent] = useState('decorative'); // Default!
     const [userHasInteracted, setUserHasInteracted] = useState(false);
     const dialogRef = useRef(null);
     const [tempMeta, setTempMeta] = useState({ title: '', desc: '' });
     const [tempIntent, setTempIntent] = useState('decorative'); // For Dialog
     const [meta, setMeta] = useState({ title: '', desc: '' });
+    const metaIsDirtyRef = useRef(false);
     const [options, setOptions] = useState({
         useCurrentColor: false,
         injectDarkMode: false,
@@ -379,6 +86,330 @@ const App = () => {
     });
     const [colors, setColors] = useState([]); // [{ hex: '#...', isText: bool, isLarge: bool, count: num }]
     const [darkModeColors, setDarkModeColors] = useState({});
+
+const extractMetaFromSvg = (svgString) => {
+    try {
+        const doc = new DOMParser().parseFromString(svgString || '', 'image/svg+xml');
+        const tEl = doc.querySelector('title');
+        const dEl = doc.querySelector('desc');
+        return {
+            title: (tEl && tEl.textContent) ? tEl.textContent.trim() : '',
+            desc: (dEl && dEl.textContent) ? dEl.textContent.trim() : ''
+        };
+    } catch (err) {
+        return { title: '', desc: '' };
+    }
+};
+
+const BEAUTIFIED_DISPLAY_SUFFIX = '';
+const OPTIMIZED_DISPLAY_SUFFIX = '';
+
+const normalizeHex = (hex) => {
+    if (!hex) return null;
+    const value = hex.trim().toLowerCase();
+    if (/^#([0-9a-f]{3})$/i.test(value)) {
+        const chars = value.slice(1).split('');
+        return `#${chars.map(c => `${c}${c}`).join('')}`;
+    }
+    if (/^#([0-9a-f]{6})$/i.test(value)) return value;
+    if (/^#([0-9a-f]{8})$/i.test(value)) return value.slice(0, 7);
+    return null;
+};
+
+const normalizeColorToken = (token) => {
+    if (!token) return null;
+    const trimmed = token.trim().toLowerCase();
+    const asHex = normalizeHex(trimmed);
+    if (asHex) return asHex;
+    if (trimmed === 'none') return null;
+    try {
+        const canvas = document.createElement('canvas');
+        canvas.width = canvas.height = 1;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = trimmed;
+        return normalizeHex(ctx.fillStyle);
+    } catch (err) {
+        return null;
+    }
+};
+
+const hexToRgb = (hex) => {
+    const normalized = normalizeHex(hex);
+    if (!normalized) return { r: 0, g: 0, b: 0 };
+    const intVal = parseInt(normalized.slice(1), 16);
+    return {
+        r: (intVal >> 16) & 255,
+        g: (intVal >> 8) & 255,
+        b: intVal & 255
+    };
+};
+
+const rgbToHex = ({ r, g, b }) => {
+    const toHex = (val) => Math.max(0, Math.min(255, val)).toString(16).padStart(2, '0');
+    return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+};
+
+const getLuminance = ({ r, g, b }) => {
+    const srgb = [r, g, b].map((val) => {
+        const channel = val / 255;
+        return channel <= 0.03928
+            ? channel / 12.92
+            : Math.pow((channel + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * srgb[0] + 0.7152 * srgb[1] + 0.0722 * srgb[2];
+};
+
+const getContrastRatio = (fgHex, bgHex) => {
+    const fg = hexToRgb(fgHex);
+    const bg = hexToRgb(bgHex);
+    const fgL = getLuminance(fg);
+    const bgL = getLuminance(bg);
+    const ratio = (Math.max(fgL, bgL) + 0.05) / (Math.min(fgL, bgL) + 0.05);
+    return Number(ratio.toFixed(2));
+};
+
+const getRelativeLuminanceAPCA = ({ r, g, b }) => {
+    const [RsRGB, GsRGB, BsRGB] = [r, g, b].map(v => v / 255);
+    const toLinear = (c) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+    const Rlin = toLinear(RsRGB);
+    const Glin = toLinear(GsRGB);
+    const Blin = toLinear(BsRGB);
+    return 0.2126729 * Rlin + 0.7151522 * Glin + 0.0721750 * Blin;
+};
+
+const getAPCAContrast = (fgHex, bgHex) => {
+    const fgL = getRelativeLuminanceAPCA(hexToRgb(fgHex));
+    const bgL = getRelativeLuminanceAPCA(hexToRgb(bgHex));
+    const contrast = Math.abs((fgL - bgL) * 100);
+    return Number(contrast.toFixed(1));
+};
+
+const rgbToHsl = ({ r, g, b }) => {
+    const rNorm = r / 255;
+    const gNorm = g / 255;
+    const bNorm = b / 255;
+    const max = Math.max(rNorm, gNorm, bNorm);
+    const min = Math.min(rNorm, gNorm, bNorm);
+    let h = 0;
+    let s = 0;
+    const l = (max + min) / 2;
+
+    if (max !== min) {
+        const d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+        switch (max) {
+            case rNorm:
+                h = (gNorm - bNorm) / d + (gNorm < bNorm ? 6 : 0);
+                break;
+            case gNorm:
+                h = (bNorm - rNorm) / d + 2;
+                break;
+            default:
+                h = (rNorm - gNorm) / d + 4;
+        }
+        h /= 6;
+    }
+
+    return { h: Math.round(h * 360), s: Math.round(s * 100), l: Math.round(l * 100) };
+};
+
+const hslToRgb = ({ h, s, l }) => {
+    const sNorm = s / 100;
+    const lNorm = l / 100;
+
+    if (s === 0) {
+        const val = Math.round(lNorm * 255);
+        return { r: val, g: val, b: val };
+    }
+
+    const hueToRgb = (p, q, t) => {
+        if (t < 0) t += 1;
+        if (t > 1) t -= 1;
+        if (t < 1 / 6) return p + (q - p) * 6 * t;
+        if (t < 1 / 2) return q;
+        if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+        return p;
+    };
+
+    const q = lNorm < 0.5
+        ? lNorm * (1 + sNorm)
+        : lNorm + sNorm - lNorm * sNorm;
+    const p = 2 * lNorm - q;
+
+    const r = hueToRgb(p, q, h / 360 + 1 / 3);
+    const g = hueToRgb(p, q, h / 360);
+    const b = hueToRgb(p, q, h / 360 - 1 / 3);
+
+    return {
+        r: Math.round(r * 255),
+        g: Math.round(g * 255),
+        b: Math.round(b * 255)
+    };
+};
+
+const suggestAccessibleColor = (hex, bgLight, bgDark, isText, contrastMode) => {
+    const targetRatio = contrastMode === 'apca'
+        ? (isText ? 75 : 60)
+        : (isText ? 4.5 : 3);
+
+    const startRgb = hexToRgb(hex);
+    const startHsl = rgbToHsl(startRgb);
+    const maxSteps = 30;
+
+    const meetsContrast = (candidate) => {
+        if (contrastMode === 'apca') {
+            const lightLc = Math.abs(getAPCAContrast(candidate, bgLight));
+            const darkLc = Math.abs(getAPCAContrast(candidate, bgDark));
+            return Math.min(lightLc, darkLc) >= targetRatio;
+        }
+        const ratioLight = getContrastRatio(candidate, bgLight);
+        const ratioDark = getContrastRatio(candidate, bgDark);
+        return Math.min(ratioLight, ratioDark) >= targetRatio;
+    };
+
+    for (let step = 1; step <= maxSteps; step++) {
+        const delta = step * 1.5;
+        const candidates = [
+            Math.min(100, startHsl.l + delta),
+            Math.max(0, startHsl.l - delta)
+        ].map(lVal => rgbToHex(hslToRgb({ h: startHsl.h, s: startHsl.s, l: lVal })));
+        for (const candidate of candidates) {
+            if (meetsContrast(candidate)) return candidate;
+        }
+    }
+
+    for (let step = 1; step <= 20; step++) {
+        const newS = Math.max(0, startHsl.s - step * 4);
+        const candidate = rgbToHex(hslToRgb({ h: startHsl.h, s: newS, l: startHsl.l }));
+        if (meetsContrast(candidate)) return candidate;
+    }
+
+    for (let dh = -18; dh <= 18; dh += 3) {
+        for (let dl = -12; dl <= 12; dl += 3) {
+            const candidate = rgbToHex(hslToRgb({
+                h: (startHsl.h + dh + 360) % 360,
+                s: startHsl.s,
+                l: Math.min(100, Math.max(0, startHsl.l + dl))
+            }));
+            if (meetsContrast(candidate)) return candidate;
+        }
+    }
+
+    const white = '#ffffff';
+    if (meetsContrast(white)) return white;
+    const black = '#000000';
+    if (meetsContrast(black)) return black;
+    return hex;
+};
+
+const isTextElement = (el) => {
+    if (!el || !el.tagName) return false;
+    const tag = el.tagName.toLowerCase();
+    if (['text', 'tspan', 'textpath', 'title'].includes(tag)) return true;
+    if (el.childNodes && el.childNodes.length > 0) {
+        for (const node of el.childNodes) {
+            if (node.nodeType === 3 && node.textContent.trim().length > 0) return true;
+            if (node.nodeType === 1 && isTextElement(node)) return true;
+        }
+    }
+    return false;
+};
+
+const getFontSize = (el) => {
+    const fontSizeAttr = el.getAttribute && el.getAttribute('font-size');
+    if (fontSizeAttr) {
+        const parsed = parseFloat(fontSizeAttr);
+        if (!Number.isNaN(parsed)) return parsed;
+    }
+    const styleAttr = el.getAttribute && el.getAttribute('style');
+    if (styleAttr) {
+        const match = styleAttr.match(/font-size\s*:\s*([0-9.]+)(px|pt|rem|em)/i);
+        if (match) {
+            const val = parseFloat(match[1]);
+            if (!Number.isNaN(val)) {
+                const unit = match[2].toLowerCase();
+                if (unit === 'px') return val;
+                if (unit === 'pt') return val * (96 / 72);
+                if (unit === 'rem' || unit === 'em') return val * 16;
+            }
+        }
+    }
+    return 12;
+};
+
+const isLargeText = (el) => {
+    const size = getFontSize(el);
+    const weightAttr = el.getAttribute && el.getAttribute('font-weight');
+    const weight = weightAttr ? weightAttr.toLowerCase() : 'normal';
+    const isBold = weight === 'bold' || parseInt(weight, 10) >= 700;
+    return size >= 18 || (isBold && size >= 14);
+};
+
+const getAPCALevel = (contrast) => {
+    const abs = Math.abs(contrast);
+    if (abs >= 90) return 'AAA';
+    if (abs >= 75) return 'AA';
+    return 'Fail';
+};
+
+const ensureElementId = (element, prefix, doc) => {
+    if (!element) return '';
+    const existing = (element.getAttribute('id') || '').trim();
+    if (existing) return existing;
+    let candidate = '';
+    do {
+        candidate = generateId(prefix);
+    } while (doc && doc.getElementById(candidate));
+    element.setAttribute('id', candidate);
+    return candidate;
+};
+
+const buildLightDarkPreview = (svgString) => {
+    const empty = { light: '', dark: '' };
+    if (!svgString || !svgString.trim()) return empty;
+    try {
+        const doc = new DOMParser().parseFromString(svgString, 'image/svg+xml');
+        const svgEl = doc.querySelector('svg');
+        if (!svgEl) return empty;
+        const serializer = new XMLSerializer();
+
+        const ensureNamespace = (el) => {
+            if (!el.getAttribute('xmlns')) {
+                el.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+            }
+        };
+
+        const stripDarkMode = (clone) => {
+            const style = clone.querySelector('#dark-mode-style');
+            if (style) style.remove();
+        };
+
+        const forceDarkMode = (clone) => {
+            const style = clone.querySelector('#dark-mode-style');
+            if (style && style.textContent.includes('@media')) {
+                const match = style.textContent.match(/@media\s*\(prefers-color-scheme:\s*dark\)\s*{([\s\S]*)}$/);
+                if (match && match[1]) {
+                    style.textContent = match[1].replace(/}\s*$/, '').trim();
+                }
+            }
+        };
+
+        const lightClone = svgEl.cloneNode(true);
+        ensureNamespace(lightClone);
+        stripDarkMode(lightClone);
+
+        const darkClone = svgEl.cloneNode(true);
+        ensureNamespace(darkClone);
+        forceDarkMode(darkClone);
+
+        return {
+            light: serializer.serializeToString(lightClone),
+            dark: serializer.serializeToString(darkClone)
+        };
+    } catch (err) {
+        return empty;
+    }
+};
     const [prevOverrides, setPrevOverrides] = useState({}); // store previous override for revert
     const [elementOverrides, setElementOverrides] = useState({}); // data-a11y-id -> color
     const [elementMap, setElementMap] = useState({}); // data-a11y-id -> { orig, attr, isText, isLarge }
@@ -412,6 +443,8 @@ const App = () => {
     const [hoveredColor, setHoveredColor] = useState(null);
     const beautifiedTextareaRef = useRef(null);
     const optimizedTextareaRef = useRef(null);
+    const beautifiedSelectionRef = useRef({ start: 0, end: 0, direction: 'none', scrollTop: 0, scrollLeft: 0, restore: false });
+    const skipNextAutoOptimizeRef = useRef(false);
     const latestSvgRef = useRef('');
     const lintListRef = useRef(null);
     const fileInputRef = useRef(null);
@@ -485,6 +518,7 @@ const App = () => {
 
     const handleInlineMetaChange = (field, value) => {
         setUserHasInteracted(true);
+        metaIsDirtyRef.current = true;
         const nextMeta = { ...meta, [field]: value };
         setMeta(nextMeta);
         const hasTitle = String(nextMeta.title || '').trim().length > 0;
@@ -503,6 +537,7 @@ const App = () => {
 
     const closeMetaDialog = (save) => {
         if (save) {
+            metaIsDirtyRef.current = true;
             setIntent(tempIntent);
             if (tempIntent === 'informational') {
                 setMeta(tempMeta);
@@ -510,6 +545,8 @@ const App = () => {
                  setMeta({ title: '', desc: '' });
             }
             setUserHasInteracted(true);
+        } else {
+            metaIsDirtyRef.current = false;
         }
         if (dialogRef.current) dialogRef.current.close();
     };
@@ -832,104 +869,127 @@ const App = () => {
         }
     };
 
-    async function handleOptimize(customSvg) {
+    async function handleOptimize(customSvg, override = {}) {
         setA11yStatus(`Processing SVG... ${new Date().toLocaleTimeString()}`);
-        
+
+        const currentIntent = override.intent ?? intent;
+        const currentMeta = override.meta ?? meta;
+
         try {
             const sourceCode = typeof customSvg === 'string' ? customSvg : svgInput;
             if (!sourceCode) return;
 
-            let svgCode = sourceCode;
+            const doc = new DOMParser().parseFromString(sourceCode, 'image/svg+xml');
+            const svgEl = doc.querySelector('svg');
 
-            // 1. SVGO Optimization (Safe config with a11y preservation)
-            try {
-                const result = optimize(svgCode, {
-                    plugins: [
-                        {
-                            name: 'preset-default',
-                            params: {
-                                overrides: {
-                                    // Preserve accessibility attributes
-                                    removeViewBox: false,
-                                    removeTitle: false,
-                                    removeDesc: false
-                                }
-                            }
-                        },
-                        'removeDimensions',
-                        {
-                            name: 'removeAttrs',
-                            params: { 
-                                attrs: '(data-.*)',
-                                // Preserve all ARIA and accessibility attributes
-                                preserveCurrentColor: true
-                            } 
-                        }
-                    ]
-                });
-                if (result.data) svgCode = result.data;
-            } catch (optErr) {
-                console.warn('SVGO Optimization failed, using raw input:', optErr);
-                // Continue with raw SVG if optimization fails
-            }
-            
-            let doc = new DOMParser().parseFromString(svgCode, 'image/svg+xml');
-            let svgEl = doc.querySelector('svg');
-
-            if (!svgEl) throw new Error("Invalid SVG: Could not parse <svg> element.");
+            if (!svgEl) throw new Error('Invalid SVG: Could not parse <svg> element.');
 
             // Force namespace if missing (fix for some browsers)
             if (!svgEl.getAttribute('xmlns')) {
                 svgEl.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
             }
 
-            // 2. A11y Wizard
-            const titleId = generateId('title');
-            const descId = generateId('desc');
+            const existingMeta = extractMetaFromSvg(sourceCode);
+            const effectiveMeta = {
+                title: (currentMeta.title || '').trim() || existingMeta.title || '',
+                desc: (currentMeta.desc || '').trim() || existingMeta.desc || ''
+            };
+            const effectiveIntent = (currentIntent === 'decorative' && (effectiveMeta.title || effectiveMeta.desc))
+                ? 'informational'
+                : currentIntent;
 
-            if (intent === 'decorative') {
+            if (!metaIsDirtyRef.current) {
+                if (meta.title !== effectiveMeta.title || meta.desc !== effectiveMeta.desc) {
+                    skipNextAutoOptimizeRef.current = true;
+                    setMeta(effectiveMeta);
+                }
+                if (intent !== effectiveIntent) {
+                    skipNextAutoOptimizeRef.current = true;
+                    setIntent(effectiveIntent);
+                }
+            }
+
+            // 2. A11y Wizard
+            if (effectiveIntent === 'decorative') {
                 svgEl.setAttribute('role', 'presentation');
                 svgEl.setAttribute('aria-hidden', 'true');
                 // Remove existing a11y tags
                 svgEl.querySelectorAll('title, desc').forEach(e => e.remove());
                 svgEl.removeAttribute('aria-label');
                 svgEl.removeAttribute('aria-labelledby');
-            } else if (intent === 'informational') {
+            } else if (effectiveIntent === 'informational') {
                 svgEl.setAttribute('role', 'img');
                 svgEl.removeAttribute('aria-hidden');
-                
+
                 // Handle Title
                 let titleEl = svgEl.querySelector('title');
                 if (!titleEl) {
                     titleEl = doc.createElementNS('http://www.w3.org/2000/svg', 'title');
                     svgEl.prepend(titleEl);
                 }
-                titleEl.textContent = meta.title;
-                titleEl.id = titleId;
+                titleEl.textContent = effectiveMeta.title;
+                const titleId = ensureElementId(titleEl, 'title', doc);
 
                 // Handle Desc
                 let descEl = svgEl.querySelector('desc');
-                if (meta.desc) {
-                        if (!descEl) {
+                if (effectiveMeta.desc) {
+                    if (!descEl) {
                         descEl = doc.createElementNS('http://www.w3.org/2000/svg', 'desc');
                         titleEl.after(descEl);
                     }
-                    descEl.textContent = meta.desc;
-                    descEl.id = descId;
-                    svgEl.setAttribute('aria-labelledby', `${titleId} ${descId}`);
+                    descEl.textContent = effectiveMeta.desc;
+                    const descId = ensureElementId(descEl, 'desc', doc);
+
+                    const labelledTokens = new Set(
+                        (svgEl.getAttribute('aria-labelledby') || '')
+                            .split(/\s+/)
+                            .filter(Boolean)
+                    );
+                    labelledTokens.delete(titleId);
+                    labelledTokens.delete(descId);
+                    labelledTokens.add(titleId);
+                    labelledTokens.add(descId);
+                    const joined = Array.from(labelledTokens).join(' ');
+                    if (joined) svgEl.setAttribute('aria-labelledby', joined);
+                    else svgEl.removeAttribute('aria-labelledby');
                 } else {
-                    if(descEl) descEl.remove();
-                    svgEl.setAttribute('aria-labelledby', titleId);
+                    if (descEl) {
+                        const existingId = (descEl.getAttribute('id') || '').trim();
+                        if (existingId) {
+                            const labelledTokens = new Set(
+                                (svgEl.getAttribute('aria-labelledby') || '')
+                                    .split(/\s+/)
+                                    .filter(Boolean)
+                            );
+                            labelledTokens.delete(existingId);
+                            if (labelledTokens.size > 0) {
+                                svgEl.setAttribute('aria-labelledby', Array.from(labelledTokens).join(' '));
+                            } else {
+                                svgEl.removeAttribute('aria-labelledby');
+                            }
+                        }
+                        descEl.remove();
+                    }
+                    const labelledTokens = new Set(
+                        (svgEl.getAttribute('aria-labelledby') || '')
+                            .split(/\s+/)
+                            .filter(Boolean)
+                    );
+                    labelledTokens.delete(titleId);
+                    labelledTokens.add(titleId);
+                    const joined = Array.from(labelledTokens).join(' ');
+                    if (joined) svgEl.setAttribute('aria-labelledby', joined);
+                    else svgEl.removeAttribute('aria-labelledby');
                 }
-                
-            } else if (intent === 'interactive') {
-                // Minimal base for interactive - usually requires manual verification, 
+
+            } else if (effectiveIntent === 'interactive') {
+                // Minimal base for interactive - usually requires manual verification,
                 // but we can ensure it's not hidden.
                 svgEl.removeAttribute('aria-hidden');
                 svgEl.removeAttribute('role'); // Or specific role if known
-                
+
                 // Ensure focusable
-                if(!svgEl.hasAttribute('tabindex')) {
+                if (!svgEl.hasAttribute('tabindex')) {
                     svgEl.setAttribute('tabindex', '0');
                 }
             }
@@ -937,7 +997,6 @@ const App = () => {
             // 3. Theming & Colors
             // Collect unique colors for CSS vars
             const allEls = svgEl.querySelectorAll('*');
-            const uniqueC = new Set();
             const colorMap = new Map(); // hex -> var name
             // Annotate elements with data-a11y-id so we can target them individually
             const tempElementMap = {};
@@ -971,7 +1030,6 @@ const App = () => {
                     const val = el.getAttribute(attr);
                     if (val && val.startsWith('#')) {
                         const lowerVal = val.toLowerCase();
-                        uniqueC.add(lowerVal);
 
                         // Apply any user-specified dark mode / override mapping
                         // First apply element-specific override if present
@@ -1069,43 +1127,53 @@ const App = () => {
             }
 
             const serializer = new XMLSerializer();
-            const finalCode = serializer.serializeToString(svgEl);
+            const enrichedCode = serializer.serializeToString(svgEl);
 
-            // Generate Previews
-            // 1. Light Preview: Must disable dark mode styles (remove the style block)
-            const lightClone = svgEl.cloneNode(true);
-            const lightStyle = lightClone.querySelector('#dark-mode-style');
-            if (lightStyle) lightStyle.remove();
-            
-            // 2. Dark Preview: Must force dark mode styles (unwrap @media if present)
-            const darkClone = svgEl.cloneNode(true);
-            const darkStyle = darkClone.querySelector('#dark-mode-style');
-            if (darkStyle && darkStyle.textContent.includes('@media')) {
-               const css = darkStyle.textContent;
-               const match = css.match(/@media[^{]+\{([\s\S]*)\}\s*$/);
-               if (match && match[1]) {
-                   darkStyle.textContent = match[1];
-               }
-            } else if (!darkStyle && options.useCurrentColor) {
-               // If Using CurrentColor but no specific dark mode overrides,
-               // we want the dark preview to show white strokes/fills so it's visible on black bg.
-               // The container is .preview-dark { color: #fff; } so currentColor works automatically.
+            // Keep beautified editor focused on enriched (pre-SVGO) markup
+            const beautifiedReadable = beautifySvg(enrichedCode);
+            skipNextAutoOptimizeRef.current = true;
+            setBeautifiedCode(beautifiedReadable);
+            setSvgInput(beautifiedReadable);
+            setPreviewBeautified(buildLightDarkPreview(enrichedCode));
+
+            // Prepare optimized output from an SVG clone without internal helper attributes
+            const optimizeTarget = svgEl.cloneNode(true);
+            optimizeTarget.querySelectorAll('[data-a11y-id]').forEach(node => node.removeAttribute('data-a11y-id'));
+            let optimizedCode = new XMLSerializer().serializeToString(optimizeTarget);
+
+            try {
+                const result = optimize(optimizedCode, {
+                    plugins: [
+                        {
+                            name: 'preset-default',
+                            params: {
+                                overrides: {
+                                    removeViewBox: false,
+                                    removeTitle: false,
+                                    removeDesc: false
+                                }
+                            }
+                        },
+                        'removeDimensions',
+                        {
+                            name: 'removeAttrs',
+                            params: {
+                                attrs: '(data-.*)',
+                                preserveCurrentColor: true
+                            }
+                        }
+                    ]
+                });
+                if (result.data) optimizedCode = result.data;
+            } catch (optErr) {
+                console.warn('SVGO Optimization failed, using enriched SVG:', optErr);
             }
-            
-            const lightCode = serializer.serializeToString(lightClone);
-            const darkCode = serializer.serializeToString(darkClone);
 
-            // Debug
-            console.log('Generated Preview Light:', lightCode.slice(0, 50) + '...');
-            console.log('Generated Preview Dark:', darkCode.slice(0, 50) + '...');
-
-            setProcessedSvg({ code: finalCode, light: lightCode, dark: darkCode });
-            setOptimizedCode(finalCode);
-            // Keep editable view in sync with optimized output
-            const beautifiedFinal = beautifySvg(finalCode);
-            setBeautifiedCode(beautifiedFinal);
-            setSvgInput(beautifiedFinal);
+            const optimizedPreview = buildLightDarkPreview(optimizedCode);
+            setProcessedSvg({ code: optimizedCode, light: optimizedPreview.light, dark: optimizedPreview.dark });
+            setOptimizedCode(optimizedCode);
             setA11yStatus(`SVG processed successfully at ${new Date().toLocaleTimeString()}`);
+            metaIsDirtyRef.current = false;
 
         } catch (e) {
             console.error(e);
@@ -1113,17 +1181,20 @@ const App = () => {
         }
     }
 
-    const commitBeautifiedChange = (newCode, statusMsg = 'Preview updated') => {
+    const commitBeautifiedChange = (newCode, statusMsg = 'Preview updated', { optimize = true } = {}) => {
         const code = newCode || '';
         setBeautifiedCode(code);
         setSvgInput(code);
+        setPreviewBeautified(buildLightDarkPreview(code));
         // Keep meta in sync if user edits SVG code directly
-        const parsedMeta = extractMetaFromSvg(code);
-        const nextTitle = parsedMeta.title || '';
-        const nextDesc = parsedMeta.desc || '';
-        if (nextTitle !== meta.title || nextDesc !== meta.desc) {
-            setMeta({ title: nextTitle, desc: nextDesc });
-            setIntent(nextTitle ? 'informational' : 'decorative');
+        if (!metaIsDirtyRef.current) {
+            const parsedMeta = extractMetaFromSvg(code);
+            const nextTitle = parsedMeta.title || '';
+            const nextDesc = parsedMeta.desc || '';
+            if (nextTitle !== meta.title || nextDesc !== meta.desc) {
+                setMeta({ title: nextTitle, desc: nextDesc });
+                setIntent(nextTitle ? 'informational' : 'decorative');
+            }
         }
         try {
             setLintResults(lintSvg(code));
@@ -1131,11 +1202,29 @@ const App = () => {
             setLintResults([{ level: 'error', message: String(er) }]);
         }
         if (editorTimerRef.current) clearTimeout(editorTimerRef.current);
-        editorTimerRef.current = setTimeout(() => {
-            handleOptimize(code);
+        if (optimize) {
+            editorTimerRef.current = setTimeout(() => {
+                handleOptimize(code);
+                setA11yStatus(statusMsg);
+                setTimeout(() => setA11yStatus(''), 900);
+            }, 500);
+        } else {
+            skipNextAutoOptimizeRef.current = true;
             setA11yStatus(statusMsg);
             setTimeout(() => setA11yStatus(''), 900);
-        }, 500);
+        }
+    };
+
+    const snapshotBeautifiedSelection = (target, shouldRestore = false) => {
+        if (!target || typeof target.selectionStart !== 'number') return;
+        beautifiedSelectionRef.current = {
+            start: target.selectionStart,
+            end: target.selectionEnd,
+            direction: target.selectionDirection || 'none',
+            scrollTop: target.scrollTop,
+            scrollLeft: target.scrollLeft,
+            restore: shouldRestore
+        };
     };
 
     const ingestOriginalInput = (rawCode, statusMsg = 'Source updated') => {
@@ -1150,9 +1239,11 @@ const App = () => {
             const dText = (dEl && dEl.textContent) ? dEl.textContent.trim() : '';
             setMeta({ title: tText, desc: dText });
             setIntent(tText ? 'informational' : 'decorative');
+            metaIsDirtyRef.current = false;
         } catch (e) { /* ignore parse errors */ }
 
         setOriginalCode(source);
+        setPreviewOriginal(buildLightDarkPreview(source));
         const pretty = source ? beautifySvg(source) : '';
         setActiveEditorTab('beautified');
         commitBeautifiedChange(pretty, statusMsg);
@@ -1282,6 +1373,10 @@ const App = () => {
 
     useEffect(() => {
         if (!latestSvgRef.current || !intent) return;
+        if (skipNextAutoOptimizeRef.current) {
+            skipNextAutoOptimizeRef.current = false;
+            return;
+        }
         handleOptimize(latestSvgRef.current);
     }, [intent, meta, options, darkModeColors, elementOverrides]);
 
@@ -1500,6 +1595,29 @@ const App = () => {
     const canonicalOptimized = optimizedCode || processedSvg.code || '';
     const beautifiedDisplay = useMemo(() => (canonicalBeautified || '') + BEAUTIFIED_DISPLAY_SUFFIX, [canonicalBeautified]);
     const optimizedDisplay = useMemo(() => (canonicalOptimized || '') + OPTIMIZED_DISPLAY_SUFFIX, [canonicalOptimized]);
+
+    useLayoutEffect(() => {
+        if (!beautifiedSelectionRef.current || !beautifiedSelectionRef.current.restore) return;
+        const snapshot = beautifiedSelectionRef.current;
+        const textarea = beautifiedTextareaRef.current;
+        if (!textarea) {
+            snapshot.restore = false;
+            return;
+        }
+        const { start, end, direction, scrollTop, scrollLeft } = snapshot;
+        snapshot.restore = false;
+        requestAnimationFrame(() => {
+            const ta = beautifiedTextareaRef.current;
+            if (!ta) return;
+            try {
+                ta.setSelectionRange(start, end, direction || 'none');
+            } catch (err) {
+                /* ignore selection errors */
+            }
+            ta.scrollTop = scrollTop;
+            ta.scrollLeft = scrollLeft;
+        });
+    }, [beautifiedDisplay]);
     // Size metrics
     const sizeOf = (s) => (s ? s.length : 0);
     const fmtKB = (n) => `${(n / 1024).toFixed(1)} KB`;
@@ -1517,6 +1635,13 @@ const App = () => {
         { id: 'beautified', label: 'Beautified', hint: `Editable source • ${fmtKB(bSize)}${oSize ? ` (${pctDiff(oSize, bSize)})` : ''}` },
         { id: 'optimized', label: 'Optimized', hint: `SVGO output • ${fmtKB(zSize)}${oSize ? ` (${pctDiff(oSize, zSize)})` : ''}` }
     ];
+
+    const previewForActiveTab = activeEditorTab === 'original'
+        ? previewOriginal
+        : (activeEditorTab === 'beautified' ? previewBeautified : processedSvg);
+    const previewLightHtml = previewForActiveTab.light || '';
+    const previewDarkHtml = previewForActiveTab.dark || '';
+    const activeTabMeta = editorTabs.find(tab => tab.id === activeEditorTab) || editorTabs[0];
 
     return h('div', { class: 'app-layout' }, [
         
@@ -1606,8 +1731,17 @@ const App = () => {
                             class: 'small', 
                             onClick: () => { 
                                 const hasTitle = String(meta.title || '').trim().length > 0; 
-                                setIntent(hasTitle ? 'informational' : 'decorative'); 
-                                handleOptimize(latestSvgRef.current || svgInput || ''); 
+                                const nextIntent = hasTitle ? 'informational' : 'decorative';
+                                const overrideMeta = nextIntent === 'informational'
+                                    ? { ...meta }
+                                    : { title: '', desc: '' };
+                                skipNextAutoOptimizeRef.current = true;
+                                setIntent(nextIntent); 
+                                metaIsDirtyRef.current = true;
+                                handleOptimize(
+                                    latestSvgRef.current || svgInput || '',
+                                    { intent: nextIntent, meta: overrideMeta }
+                                ); 
                                 setA11yStatus('Accessibility meta saved'); 
                                 setTimeout(() => setA11yStatus(''), 1000); 
                             },
@@ -1910,21 +2044,21 @@ const App = () => {
             h('div', { class: 'preview-container', ref: previewContainerRef, style: `display: grid; grid-template-columns: ${previewSplit}% ${100 - previewSplit}%;` }, [
                 // Light
                 h('div', { class: 'preview-pane' }, [
-                    h('div', { class: 'preview-header' }, 'Light Mode'),
+                    h('div', { class: 'preview-header' }, `Light Mode • ${activeTabMeta.label}`),
                     h('div', { class: 'preview-viewport preview-light' }, [
                          h('div', { 
                              style: 'width:100%; height:100%; display:flex; align-items:center; justify-content:center;',
-                             dangerouslySetInnerHTML: { __html: processedSvg.light || '' } 
+                             dangerouslySetInnerHTML: { __html: previewLightHtml } 
                          })
                     ])
                 ]),
                 // Dark
                 h('div', { class: 'preview-pane' }, [
-                    h('div', { class: 'preview-header' }, 'Dark Mode'),
+                    h('div', { class: 'preview-header' }, `Dark Mode • ${activeTabMeta.label}`),
                      h('div', { class: 'preview-viewport preview-dark' }, [
                          h('div', { 
                              style: 'width:100%; height:100%; display:flex; align-items:center; justify-content:center;',
-                             dangerouslySetInnerHTML: { __html: processedSvg.dark || '' } 
+                             dangerouslySetInnerHTML: { __html: previewDarkHtml } 
                          })
                     ])
                 ]),
@@ -1984,13 +2118,21 @@ const App = () => {
                             h('textarea', {
                                 ref: beautifiedTextareaRef,
                                 value: beautifiedDisplay,
+                                wrap: 'off',
+                                autocomplete: 'off',
+                                autocapitalize: 'none',
+                                autocorrect: 'off',
                                 onInput: (e) => {
-                                    const incoming = e.target.value;
-                                    const trimmed = incoming.endsWith(BEAUTIFIED_DISPLAY_SUFFIX)
-                                        ? incoming.slice(0, -BEAUTIFIED_DISPLAY_SUFFIX.length)
-                                        : incoming;
-                                    commitBeautifiedChange(trimmed, 'Beautified updated');
+                                    const target = e.target;
+                                    snapshotBeautifiedSelection(target, true);
+                                    commitBeautifiedChange(target.value, 'Beautified updated', { optimize: false });
                                 },
+                                onBlur: (e) => {
+                                    snapshotBeautifiedSelection(e.target, false);
+                                    commitBeautifiedChange(e.target.value, 'Beautified synced');
+                                },
+                                onSelect: (e) => snapshotBeautifiedSelection(e.target, false),
+                                onScroll: (e) => snapshotBeautifiedSelection(e.target, false),
                                 spellcheck: false,
                                 wrap: 'off',
                                 'aria-label': 'Beautified SVG editor'

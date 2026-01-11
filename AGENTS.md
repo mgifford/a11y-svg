@@ -8,6 +8,8 @@ Maintain and evolve a browser-native SVG optimization tool that prioritizes WCAG
 - License compliance: Every file must maintain the AGPL-3.0 header.
 - A11y first: The UI must be keyboard-navigable and screen-reader friendly, using semantic HTML5 elements.
 - SVG standards: Follow Carie Fisher's Accessible SVG patterns. Preserve `xmlns` namespaces for standalone SVG usage.
+- Semantic integrity: Don't ever remove meaningful semantics in optimization efforts.
+- Preserve metadata: Loading or beautifying SVGs must retain existing `<title>` and `<desc>` nodes unless the user explicitly marks the asset decorative.
 
 ## Design Philosophy
 - Utility: Optimization must not strip accessibility tags (`<title>`, `<desc>`, `aria-*`).
