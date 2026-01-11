@@ -9,6 +9,7 @@ const { JSDOM } = require('jsdom');
     const appSrc = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
     if (!/Copy optimized code/.test(appSrc)) throw new Error('Copy optimized code label not present in app.js');
     if (!/Download optimized code/.test(appSrc)) throw new Error('Download optimized code label not present in app.js');
+    if (!/classStyles\.get/.test(appSrc)) throw new Error('Class-based style resolution not present in app.js');
 
     // Create a small DOM and inject an accordion to validate selectors and basic interaction
     const dom = new JSDOM(html);

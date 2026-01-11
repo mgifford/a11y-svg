@@ -302,6 +302,63 @@ const suggestAccessibleColor = (hex, bgLight, bgDark, isText, contrastMode) => {
     return hex;
 };
 
+const suggestDualContrastColor = (hex, bgLight, bgDark, isText, isLarge) => {
+    const startRgb = hexToRgb(hex);
+    const startHsl = rgbToHsl(startRgb);
+    const maxSteps = 30;
+
+    const meetsAll = (candidate) => {
+        try {
+            const ratioLight = getContrastRatio(candidate, bgLight);
+            const ratioDark = getContrastRatio(candidate, bgDark);
+            const level = getWCAGLevel(Math.min(ratioLight, ratioDark), isText, isLarge);
+            if (level === 'Fail') return false;
+            if (isText) {
+                const lcLight = Math.abs(getAPCAContrast(candidate, bgLight));
+                const lcDark = Math.abs(getAPCAContrast(candidate, bgDark));
+                if (Math.min(lcLight, lcDark) < 75) return false;
+            }
+            return true;
+        } catch (e) {
+            return false;
+        }
+    };
+
+    for (let step = 1; step <= maxSteps; step++) {
+        const delta = step * 1.5;
+        const candidates = [
+            Math.min(100, startHsl.l + delta),
+            Math.max(0, startHsl.l - delta)
+        ].map(lVal => rgbToHex(hslToRgb({ h: startHsl.h, s: startHsl.s, l: lVal })));
+        for (const candidate of candidates) {
+            if (meetsAll(candidate)) return candidate;
+        }
+    }
+
+    for (let step = 1; step <= 20; step++) {
+        const newS = Math.max(0, startHsl.s - step * 4);
+        const candidate = rgbToHex(hslToRgb({ h: startHsl.h, s: newS, l: startHsl.l }));
+        if (meetsAll(candidate)) return candidate;
+    }
+
+    for (let dh = -18; dh <= 18; dh += 3) {
+        for (let dl = -12; dl <= 12; dl += 3) {
+            const candidate = rgbToHex(hslToRgb({
+                h: (startHsl.h + dh + 360) % 360,
+                s: startHsl.s,
+                l: Math.min(100, Math.max(0, startHsl.l + dl))
+            }));
+            if (meetsAll(candidate)) return candidate;
+        }
+    }
+
+    const white = '#ffffff';
+    if (meetsAll(white)) return white;
+    const black = '#000000';
+    if (meetsAll(black)) return black;
+    return hex;
+};
+
 const isTextElement = (el) => {
     if (!el || !el.tagName) return false;
     const tag = el.tagName.toLowerCase();
@@ -314,6 +371,8 @@ const isTextElement = (el) => {
     }
     return false;
 };
+
+let latestClassStyles = new Map();
 
 const getFontSize = (el) => {
     const fontSizeAttr = el.getAttribute && el.getAttribute('font-size');
@@ -560,8 +619,10 @@ const buildLightDarkPreview = (svgString) => {
         const colorMap = new Map(); // key -> { hex, isText, isLarge, count, originals: Set }
         const elements = doc.querySelectorAll('*');
 
-        // collect CSS variables from <style> blocks
+        // collect CSS variables and basic class-level styles from <style> blocks
         const cssVars = {};
+        const classStyles = new Map();
+        const cleanDecl = (value) => value.replace(/!important\s*$/i, '').trim();
         const styleEls = doc.querySelectorAll('style');
         styleEls.forEach(s => {
             const txt = s.textContent || '';
@@ -569,14 +630,39 @@ const buildLightDarkPreview = (svgString) => {
             const re = /(--[a-zA-Z0-9-_]+)\s*:\s*([^;]+)\s*;/g;
             let m;
             while ((m = re.exec(txt)) !== null) {
-                cssVars[m[1].trim()] = m[2].trim();
+                cssVars[m[1].trim()] = cleanDecl(m[2]);
+            }
+
+            const ruleRe = /([^{}]+)\{([^{}]+)\}/g;
+            let rm;
+            while ((rm = ruleRe.exec(txt)) !== null) {
+                const selectors = rm[1].split(',').map(sel => sel.trim()).filter(Boolean);
+                if (selectors.length === 0) continue;
+                const body = rm[2];
+                const fillMatch = body.match(/fill\s*:\s*([^;!]+)(?:!important)?/i);
+                const strokeMatch = body.match(/stroke\s*:\s*([^;!]+)(?:!important)?/i);
+                const colorMatch = body.match(/color\s*:\s*([^;!]+)(?:!important)?/i);
+                if (!fillMatch && !strokeMatch && !colorMatch) continue;
+                selectors.forEach(sel => {
+                    if (/^\.[a-zA-Z0-9_-]+$/.test(sel)) {
+                        const name = sel.slice(1);
+                        const existing = classStyles.get(name) || {};
+                        if (fillMatch) existing.fill = cleanDecl(fillMatch[1]);
+                        if (strokeMatch) existing.stroke = cleanDecl(strokeMatch[1]);
+                        if (colorMatch) existing.color = cleanDecl(colorMatch[1]);
+                        classStyles.set(name, existing);
+                    }
+                });
             }
         });
+
+        latestClassStyles = classStyles;
 
         // helper to resolve color tokens (hex, var(), currentColor, color-mix)
         const resolveColorValue = (val, el) => {
             if (!val) return null;
             const v = val.trim();
+            if (!v || v === 'none' || v.toLowerCase() === 'transparent') return null;
             // direct hex
             const hexRe = /^#([0-9a-fA-F]{3,8})$/;
             const mhex = v.match(hexRe);
@@ -616,6 +702,19 @@ const buildLightDarkPreview = (svgString) => {
                         }
                         // also check attribute color
                         if (!cur) cur = svgRoot.getAttribute('color');
+                    }
+                }
+                if (!cur) {
+                    const classAttr = el.getAttribute && el.getAttribute('class');
+                    if (classAttr) {
+                        classAttr.split(/\s+/).some(cls => {
+                            const info = latestClassStyles && latestClassStyles.get(cls.trim());
+                            if (info && info.color) {
+                                cur = info.color;
+                                return true;
+                            }
+                            return false;
+                        });
                     }
                 }
                 if (cur) return resolveColorValue(cur, el);
@@ -658,6 +757,8 @@ const buildLightDarkPreview = (svgString) => {
             return rgbToHex({ r, g, b: bl });
         };
 
+        const classStyles = latestClassStyles || new Map();
+
         elements.forEach(el => {
             const isText = isTextElement(el);
             const isLarge = isText ? isLargeText(el) : false;
@@ -676,6 +777,20 @@ const buildLightDarkPreview = (svgString) => {
                 if (mfill) tryAttrs.push({ token: mfill[1].trim(), attr: 'fill', inline: true });
                 const mstroke = styleAttr.match(/stroke\s*:\s*([^;]+)/i);
                 if (mstroke) tryAttrs.push({ token: mstroke[1].trim(), attr: 'stroke', inline: true });
+            }
+
+            const classAttr = el.getAttribute && el.getAttribute('class');
+            if (classAttr) {
+                classAttr.split(/\s+/).filter(Boolean).forEach(cls => {
+                    const info = classStyles.get(cls);
+                    if (!info) return;
+                    if (info.fill) tryAttrs.push({ token: info.fill, attr: 'fill', className: cls });
+                    if (info.stroke) tryAttrs.push({ token: info.stroke, attr: 'stroke', className: cls });
+                    if (info.color) {
+                        tryAttrs.push({ token: info.color, attr: 'fill', className: cls, implied: true });
+                        tryAttrs.push({ token: info.color, attr: 'stroke', className: cls, implied: true });
+                    }
+                });
             }
 
             tryAttrs.forEach(item => {
@@ -760,34 +875,36 @@ const buildLightDarkPreview = (svgString) => {
                         }
                     };
                     const heading = `Color ${hex} fails WCAG contrast for ${targetLabel}`;
-                    issues.push({ level: 'warning', type: 'color', hex, originals, suggested, heading, detail: wcagDetail, findingCount: 1 });
+                    issues.push({ level: 'warning', type: 'color', hex, originals, suggested, heading, detail: wcagDetail, findingCount: 1, isText, isLarge });
                 }
 
-                // APCA: check signed Lc values
-                const apcaLight = getAPCAContrast(hex, bgLight);
-                const apcaDark = getAPCAContrast(hex, bgDark);
-                const absLight = Math.abs(apcaLight);
-                const absDark = Math.abs(apcaDark);
-                const apcaThreshold = isText ? 75 : 60;
-                if (absLight < apcaThreshold || absDark < apcaThreshold) {
-                    const suggested2 = suggestAccessibleColor(hex, bgLight, bgDark, isText, 'apca');
-                    const apcaDetail = {
-                        check: 'APCA',
-                        target: targetLabel,
-                        requirement: `≥ ${apcaThreshold} Lc`,
-                        light: {
-                            background: bgLight,
-                            lc: apcaLight,
-                            status: absLight >= apcaThreshold ? 'Pass' : 'Fail'
-                        },
-                        dark: {
-                            background: bgDark,
-                            lc: apcaDark,
-                            status: absDark >= apcaThreshold ? 'Pass' : 'Fail'
-                        }
-                    };
-                    const heading = `Color ${hex} fails APCA contrast for ${targetLabel}`;
-                    issues.push({ level: 'warning', type: 'color', hex, originals, suggested: suggested2, heading, detail: apcaDetail, findingCount: 1 });
+                // APCA: only evaluate for text-bearing elements per current guidelines
+                if (isText) {
+                    const apcaLight = getAPCAContrast(hex, bgLight);
+                    const apcaDark = getAPCAContrast(hex, bgDark);
+                    const absLight = Math.abs(apcaLight);
+                    const absDark = Math.abs(apcaDark);
+                    const apcaThreshold = isText ? 75 : 60;
+                    if (absLight < apcaThreshold || absDark < apcaThreshold) {
+                        const suggested2 = suggestAccessibleColor(hex, bgLight, bgDark, isText, 'apca');
+                        const apcaDetail = {
+                            check: 'APCA',
+                            target: targetLabel,
+                            requirement: `≥ ${apcaThreshold} Lc`,
+                            light: {
+                                background: bgLight,
+                                lc: apcaLight,
+                                status: absLight >= apcaThreshold ? 'Pass' : 'Fail'
+                            },
+                            dark: {
+                                background: bgDark,
+                                lc: apcaDark,
+                                status: absDark >= apcaThreshold ? 'Pass' : 'Fail'
+                            }
+                        };
+                        const heading = `Color ${hex} fails APCA contrast for ${targetLabel}`;
+                        issues.push({ level: 'warning', type: 'color', hex, originals, suggested: suggested2, heading, detail: apcaDetail, findingCount: 1, isText, isLarge });
+                    }
                 }
             });
 
@@ -863,6 +980,27 @@ const buildLightDarkPreview = (svgString) => {
         if (!originalToken || !newHex) return;
         const src = beautifiedCode || processedSvg.code || svgInput || '';
         const statusLabel = `Replaced ${originalToken} → ${newHex}`;
+        const highlightInBeautified = (token) => {
+            const normalized = normalizeHex(token) || token;
+            setActiveEditorTab('beautified');
+            setHoveredColor(normalized);
+            setTimeout(() => {
+                const textarea = beautifiedTextareaRef.current;
+                if (!textarea || !normalized) return;
+                const needle = normalized.toLowerCase();
+                const haystack = textarea.value ? textarea.value.toLowerCase() : '';
+                const idx = haystack.indexOf(needle);
+                if (idx === -1) return;
+                try {
+                    textarea.focus({ preventScroll: false });
+                } catch (focusErr) {
+                    textarea.focus();
+                }
+                textarea.setSelectionRange(idx, idx + needle.length, 'forward');
+                snapshotBeautifiedSelection(textarea, false);
+                updateBeautifiedCaret();
+            }, 120);
+        };
         try {
             const parser = new DOMParser();
             const doc = parser.parseFromString(src, 'image/svg+xml');
@@ -953,6 +1091,7 @@ const buildLightDarkPreview = (svgString) => {
             addHighlightToken(originalToken);
             addHighlightToken(newHex);
             commitBeautifiedChange(beautified, statusLabel);
+            highlightInBeautified(newHex);
         } catch (e) {
             const esc = originalToken.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&');
             const re = new RegExp(esc, 'g');
@@ -961,6 +1100,7 @@ const buildLightDarkPreview = (svgString) => {
             addHighlightToken(originalToken);
             addHighlightToken(newHex);
             commitBeautifiedChange(beautified, `${statusLabel} (fallback)`);
+            highlightInBeautified(newHex);
         }
     };
 
@@ -2346,7 +2486,9 @@ const buildLightDarkPreview = (svgString) => {
                             originals: new Set(),
                             suggested: null,
                             fallbackMessages: [],
-                            findingCount: 0
+                            findingCount: 0,
+                            isText: false,
+                            isLarge: false
                         };
                         if (it.heading && !entry.heading) entry.heading = it.heading;
                         if (!entry.target && it.detail && it.detail.target) entry.target = it.detail.target;
@@ -2361,6 +2503,8 @@ const buildLightDarkPreview = (svgString) => {
                         entry.findingCount += it.findingCount || 1;
                         (it.originals || []).forEach(o => entry.originals.add(o));
                         if (it.suggested && !entry.suggested) entry.suggested = it.suggested;
+                        if (typeof it.isText === 'boolean') entry.isText = entry.isText || it.isText;
+                        if (typeof it.isLarge === 'boolean') entry.isLarge = entry.isLarge || it.isLarge;
                         colorMap.set(key, entry);
                     } else if (it) {
                         combined.push(it);
@@ -2371,38 +2515,53 @@ const buildLightDarkPreview = (svgString) => {
                 const formatLc = (val) => (typeof val === 'number' && Number.isFinite(val) ? val.toFixed(1) : 'n/a');
                 for (const v of colorMap.values()) {
                     const hex = v.hex;
-                    const isText = true;
+                    const isText = v.isText;
                     const suggestedWCAG = suggestAccessibleColor(hex, bgLight, bgDark, isText, 'wcag');
-                    const suggestedAPCA = suggestAccessibleColor(hex, bgLight, bgDark, isText, 'apca');
+                    const suggestedAPCA = isText ? suggestAccessibleColor(hex, bgLight, bgDark, isText, 'apca') : null;
                     const passesBoth = (cand) => {
                         try {
-                            const r1 = getWCAGLevel(Math.min(getContrastRatio(cand, bgLight), getContrastRatio(cand, bgDark)), isText, false);
+                            const ratio = Math.min(getContrastRatio(cand, bgLight), getContrastRatio(cand, bgDark));
+                            const wcagLevel = getWCAGLevel(ratio, isText, v.isLarge);
+                            if (wcagLevel === 'Fail') return false;
+                            if (!isText) return true;
                             const ap1 = Math.min(Math.abs(getAPCAContrast(cand, bgLight)), Math.abs(getAPCAContrast(cand, bgDark)));
-                            return (r1 === 'AA' || r1 === 'AAA') && ap1 >= 75;
+                            return ap1 >= 75;
                         } catch (e) { return false; }
                     };
-                    let chosen = v.suggested || suggestedWCAG || suggestedAPCA;
-                    if (suggestedWCAG && passesBoth(suggestedWCAG)) chosen = suggestedWCAG;
-                    else if (suggestedAPCA && passesBoth(suggestedAPCA)) chosen = suggestedAPCA;
+                    const dual = suggestDualContrastColor(hex, bgLight, bgDark, isText, v.isLarge);
+                    let chosen = null;
+                    if (dual && passesBoth(dual)) {
+                        chosen = dual;
+                    } else if (suggestedWCAG && passesBoth(suggestedWCAG)) {
+                        chosen = suggestedWCAG;
+                    } else if (suggestedAPCA && passesBoth(suggestedAPCA)) {
+                        chosen = suggestedAPCA;
+                    } else if (v.suggested && passesBoth(v.suggested)) {
+                        chosen = v.suggested;
+                    } else {
+                        chosen = dual || v.suggested || suggestedWCAG || suggestedAPCA || hex;
+                    }
                     v.suggested = chosen;
                     v.hex = typeof hex === 'string' ? hex.toUpperCase() : hex;
                     const detailLines = [];
-                    v.details.forEach(detail => {
-                        if (!detail || !detail.check) return;
-                        if (detail.check === 'WCAG 2.2') {
-                            if (detail.light && typeof detail.light === 'object') {
-                                detailLines.push(`WCAG light bg ${formatBg(detail.light.background)}: ${formatRatio(detail.light.ratio)}:1 (${detail.light.status}; needs ${detail.requirement})`);
-                            }
-                            if (detail.dark && typeof detail.dark === 'object') {
-                                detailLines.push(`WCAG dark bg ${formatBg(detail.dark.background)}: ${formatRatio(detail.dark.ratio)}:1 (${detail.dark.status}; needs ${detail.requirement})`);
-                            }
-                        } else if (detail.check === 'APCA') {
-                            if (detail.light && typeof detail.light === 'object') {
-                                detailLines.push(`APCA light bg ${formatBg(detail.light.background)}: Lc ${formatLc(detail.light.lc)} (${detail.light.status}; needs ${detail.requirement})`);
-                            }
-                            if (detail.dark && typeof detail.dark === 'object') {
-                                detailLines.push(`APCA dark bg ${formatBg(detail.dark.background)}: Lc ${formatLc(detail.dark.lc)} (${detail.dark.status}; needs ${detail.requirement})`);
-                            }
+                    const wcagDetails = v.details.filter(detail => detail && detail.check === 'WCAG 2.2');
+                    const apcaDetails = v.details.filter(detail => detail && detail.check === 'APCA');
+                    const backgrounds = [
+                        { key: 'light', label: 'light', background: bgLight },
+                        { key: 'dark', label: 'dark', background: bgDark }
+                    ];
+                    backgrounds.forEach(({ key, label, background }) => {
+                        const wcagInfo = wcagDetails.find(detail => detail[key]);
+                        const apcaInfo = apcaDetails.find(detail => detail[key]);
+                        const metrics = [];
+                        if (wcagInfo && wcagInfo[key]) {
+                            metrics.push(`WCAG ${formatRatio(wcagInfo[key].ratio)}:1 (${wcagInfo[key].status}; needs ${wcagInfo.requirement})`);
+                        }
+                        if (apcaInfo && apcaInfo[key]) {
+                            metrics.push(`APCA Lc ${formatLc(apcaInfo[key].lc)} (${apcaInfo[key].status}; needs ${apcaInfo.requirement})`);
+                        }
+                        if (metrics.length > 0) {
+                            detailLines.push(`Foreground ${v.hex} on ${label} background ${formatBg(background)} — ${metrics.join('; ')}`);
                         }
                     });
                     const heading = v.heading || `Color ${v.hex} has contrast issues for ${v.target || 'this usage'}`;
