@@ -557,7 +557,7 @@ dialog h3 { margin-top: 0; }
     border: 0;
 }
 
-/* Lint panel styles: fixed header, two inline warnings, scrollable list */
+/* Lint panel styles: fixed header, scrollable list */
 .lint-panel {
     margin-top: 0.5rem;
     padding: 0.25rem;
@@ -566,7 +566,6 @@ dialog h3 { margin-top: 0; }
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
-    overflow-y: auto;
 }
 .lint-panel .lint-header {
     font-weight: 600;
@@ -576,19 +575,13 @@ dialog h3 { margin-top: 0; }
     justify-content: space-between;
     gap: 0.5rem;
 }
-.lint-panel .lint-top {
-    display: flex;
-    flex-direction: column;
-    gap: 0.2rem;
-    padding: 0 0.5rem;
+.lint-panel {
+    --lint-list-max: clamp(320px, 45vh, 560px);
 }
 .lint-panel {
-    --lint-list-max: 28vh; /* default responsive max-height */
-}
-.lint-panel {
-    /* Defensive: cap the overall panel height so older markup without .lint-list still scrolls */
+    /* Cap overall height but let inner list handle scrolling for consistent focus behaviour */
     max-height: var(--lint-list-max);
-    overflow: auto;
+    overflow: hidden;
     box-sizing: border-box;
 }
 .lint-title { font-weight: 600; }
@@ -603,13 +596,14 @@ dialog h3 { margin-top: 0; }
 }
 .lint-close:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 .lint-panel .lint-list {
-    max-height: var(--lint-list-max); /* responsive max-height */
-    overflow: auto;
+    flex: 1 1 auto;
+    max-height: none;
+    overflow-y: auto;
+    overflow-x: hidden;
     padding: 0.25rem 0.5rem 0.5rem 0.5rem;
     border-top: 1px dashed var(--border);
 }
 .lint-item { display:flex; justify-content:space-between; align-items:center; padding:0.35rem 0; }
-.lint-top-item { background: rgba(0,0,0,0.02); padding:0.4rem; border-radius:6px; }
 .lint-message { color: var(--text-body); font-size: 0.95rem; flex:1; }
 .lint-action { display:flex; align-items:center; gap:0.5rem; margin-left:0.6rem; }
 .lint-action .lint-count {

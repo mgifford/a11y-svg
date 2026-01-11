@@ -621,7 +621,7 @@ const buildLightDarkPreview = (svgString) => {
 
         // collect CSS variables and basic class-level styles from <style> blocks
         const cssVars = {};
-        const classStyles = new Map();
+        const capturedClassStyles = new Map();
         const cleanDecl = (value) => value.replace(/!important\s*$/i, '').trim();
         const styleEls = doc.querySelectorAll('style');
         styleEls.forEach(s => {
@@ -646,17 +646,17 @@ const buildLightDarkPreview = (svgString) => {
                 selectors.forEach(sel => {
                     if (/^\.[a-zA-Z0-9_-]+$/.test(sel)) {
                         const name = sel.slice(1);
-                        const existing = classStyles.get(name) || {};
+                        const existing = capturedClassStyles.get(name) || {};
                         if (fillMatch) existing.fill = cleanDecl(fillMatch[1]);
                         if (strokeMatch) existing.stroke = cleanDecl(strokeMatch[1]);
                         if (colorMatch) existing.color = cleanDecl(colorMatch[1]);
-                        classStyles.set(name, existing);
+                        capturedClassStyles.set(name, existing);
                     }
                 });
             }
         });
 
-        latestClassStyles = classStyles;
+        latestClassStyles = capturedClassStyles;
 
         // helper to resolve color tokens (hex, var(), currentColor, color-mix)
         const resolveColorValue = (val, el) => {
@@ -757,7 +757,7 @@ const buildLightDarkPreview = (svgString) => {
             return rgbToHex({ r, g, b: bl });
         };
 
-        const classStyles = latestClassStyles || new Map();
+        const classStyleLookup = latestClassStyles || capturedClassStyles || new Map();
 
         elements.forEach(el => {
             const isText = isTextElement(el);
@@ -782,7 +782,7 @@ const buildLightDarkPreview = (svgString) => {
             const classAttr = el.getAttribute && el.getAttribute('class');
             if (classAttr) {
                 classAttr.split(/\s+/).filter(Boolean).forEach(cls => {
-                    const info = classStyles.get(cls);
+                    const info = classStyleLookup.get(cls);
                     if (!info) return;
                     if (info.fill) tryAttrs.push({ token: info.fill, attr: 'fill', className: cls });
                     if (info.stroke) tryAttrs.push({ token: info.stroke, attr: 'stroke', className: cls });
@@ -2583,36 +2583,47 @@ const buildLightDarkPreview = (svgString) => {
                     return la - lb;
                 });
 
+                if (combined.length === 0) {
+                    return null;
+                }
+
+                const renderLintItem = (it, keyPrefix) => {
+                    const baseLabel = it.hex ? `Color ${it.hex}` : 'Lint issue';
+                    const accessibleLabel = it.findingCount && it.findingCount > 1
+                        ? `${baseLabel} (${it.findingCount} findings)`
+                        : baseLabel;
+                    const messageContent = Array.isArray(it.messages)
+                        ? it.messages.map((m, i) => h('div', { key: `${keyPrefix}-msg-${i}` }, m))
+                        : (it.message || '');
+                    return h('div', {
+                        key: `${keyPrefix}-${it.hex || it.message || 'lint'}`,
+                        class: 'lint-item',
+                        role: 'listitem',
+                        tabIndex: 0,
+                        'aria-label': accessibleLabel,
+                        onKeyDown: handleLintKeyDown
+                    }, [
+                        h('div', { class: 'lint-message' }, messageContent),
+                        h('div', { class: 'lint-action' }, [
+                            it.findingCount && it.findingCount > 1 && h('span', { class: 'lint-count' }, `${it.findingCount} findings`),
+                            h('span', { class: 'suggest' }, it.suggested || ''),
+                            h('button', {
+                                class: 'small',
+                                onClick: () => applyColorFix((it.originals && it.originals[0]) || it.hex, it.suggested || it.hex),
+                                'aria-label': `Fix color ${it.hex || ''}`
+                            }, 'Fix')
+                        ])
+                    ]);
+                };
+
                 return h('div', { class: 'lint-panel', role: 'region', 'aria-label': 'Lint results' }, [
                     h('div', { class: 'lint-header' }, [
                         h('span', { class: 'lint-title' }, `Lint: ${combined.length} item${combined.length !== 1 ? 's' : ''}${lintResults.length !== combined.length ? ` (${lintResults.length} finding${lintResults.length !== 1 ? 's' : ''})` : ''}`),
                         h('button', { class: 'lint-close', onClick: () => setLintPanelVisible(false), 'aria-label': 'Hide lint panel' }, '×')
                     ]),
-                    combined.length === 0 && h('div', { style: 'color: #2b8a3e; padding:0.5rem;' }, 'No issues found'),
-                    h('div', { class: 'lint-top' }, combined.slice(0, 2).map((it, idx) => {
-                        const baseLabel = it.hex ? `Color ${it.hex}` : 'Lint issue';
-                        const accessibleLabel = it.findingCount && it.findingCount > 1 ? `${baseLabel} (${it.findingCount} findings)` : baseLabel;
-                        return h('div', { key: `top-${idx}`, class: 'lint-item lint-top-item', role: 'listitem', tabIndex: 0, 'aria-label': accessibleLabel, onKeyDown: handleLintKeyDown }, [
-                            h('div', { class: 'lint-message' }, Array.isArray(it.messages) ? it.messages.map((m, i) => h('div', { key: `m-${i}` }, m)) : (it.message || '')),
-                            h('div', { class: 'lint-action' }, [
-                                it.findingCount && it.findingCount > 1 && h('span', { class: 'lint-count' }, `${it.findingCount} findings`),
-                                h('span', { class: 'suggest' }, it.suggested || ''),
-                                h('button', { class: 'small', onClick: () => applyColorFix((it.originals && it.originals[0]) || it.hex, it.suggested || it.hex), 'aria-label': `Fix color ${it.hex || ''}` }, 'Fix')
-                            ])
-                        ]);
-                    })),
-                    h('div', { class: 'lint-list', role: 'list', ref: lintListRef, tabIndex: 0, onKeyDown: handleLintKeyDown }, combined.slice(2).map((it, idx) => {
-                        const baseLabel = it.hex ? `Color ${it.hex}` : 'Lint issue';
-                        const accessibleLabel = it.findingCount && it.findingCount > 1 ? `${baseLabel} (${it.findingCount} findings)` : baseLabel;
-                        return h('div', { key: `rest-${idx}`, class: 'lint-item', role: 'listitem', tabIndex: 0, 'aria-label': accessibleLabel }, [
-                            h('div', { class: 'lint-message' }, Array.isArray(it.messages) ? it.messages.map((m, i) => h('div', { key: `m-${i}` }, m)) : (it.message || '')),
-                            h('div', { class: 'lint-action' }, [
-                                it.findingCount && it.findingCount > 1 && h('span', { class: 'lint-count' }, `${it.findingCount} findings`),
-                                h('span', { class: 'suggest' }, it.suggested || ''),
-                                h('button', { class: 'small', onClick: () => applyColorFix((it.originals && it.originals[0]) || it.hex, it.suggested || it.hex), 'aria-label': `Fix color ${it.hex || ''}` }, 'Fix')
-                            ])
-                        ]);
-                    }))
+                    h('div', { class: 'lint-list', role: 'list', ref: lintListRef, tabIndex: 0 },
+                        combined.map((it, idx) => renderLintItem(it, `lint-${idx}`))
+                    )
                 ]);
             })() : null,
 
