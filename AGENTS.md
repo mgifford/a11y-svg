@@ -45,6 +45,30 @@ The tool must transform raw SVGs into WCAG 2.2 AA-compliant assets that are perf
 	- Provide a single Copy button for the finalized, accessible, and minified SVG code.
 
 ## QA & Tooling Expectations
-- Keep the no-build GitHub Pages runtime, but maintainers may run local CLI helpers (`npm run svgo`, `npm run svg:lint`, `npm run axe`, `npm run pa11y`, or `npm run qa`) to vet incoming assets.
+- Keep the no-build GitHub Pages runtime, but maintainers may run local CLI helpers (`npm run svgo`, `npm run svg:lint`, `npm run axe`, `npm run pa11y`, `npm run test:jsdom`, or `npm run qa`) to vet incoming assets.
 - Ensure SVG assets committed to `svg/` pass these scripts; treat failures as blockers before shipping UI changes.
 - When documenting new features, mention which QA script protects that surface so contributors know how to validate their changes.
+- All contrast calculation logic must be validated by `tests/contrast.test.js` which runs helper functions in a VM sandbox without browser dependencies.
+
+## File Organization Rules
+- Core application: `index.html`, `app.js`, `styles.css` form the single-page application
+- Configuration: `svgo.config.mjs` must preserve accessibility attributes (`<title>`, `<desc>`, `aria-*`, `role`, `viewBox`, IDs)
+- Test assets: Sample SVGs go in `svg/` with metadata tracked in `svg/manifest.json`
+- Scripts: Utility scripts (remote SVG collection, manifest updates) belong in `scripts/`
+- Tests: All test files belong in `tests/` directory
+- Every JavaScript/HTML file must include the AGPL-3.0 license header
+
+## Development Workflow
+1. Make changes to `app.js`, `styles.css`, or `index.html`
+2. Test locally by opening `index.html` in a browser
+3. Run `npm run qa` to validate accessibility compliance
+4. Run `npm run test:jsdom` to validate contrast calculations
+5. Commit only if all tests pass and accessibility is maintained
+
+## Code Style Guidelines
+- Use ES modules with CDN imports (no bundler)
+- Prefer functional components (Preact hooks)
+- Use semantic HTML5 elements
+- Include ARIA labels and live regions for dynamic content
+- Comment complex contrast calculations with WCAG references
+- Keep functions focused and testable outside the browser (see `tests/contrast.test.js`)

@@ -15,11 +15,13 @@ A browser-native SVG optimization tool that prioritizes **WCAG 2.2 AA accessibil
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/a11y-svg.git
+   git clone https://github.com/mgifford/a11y-svg.git
    cd a11y-svg
    ```
 
-2. Open `index.html` in your browser or serve via GitHub Pages
+2. Open `index.html` in your browser
+   - Double-click to open in your default browser, or
+   - Use any local server: `python3 -m http.server 8000`
 
 No build process required! All dependencies are loaded via CDN.
 
@@ -29,11 +31,12 @@ If you want to batch-optimize or audit source SVGs outside the browser UI, run t
 
 ```bash
 npm install
-npm run svgo
+npm run svgo       # batch optimize SVGs in ./svg folder
 npm run svg:lint   # structural sanity checks via svglint
-npm run axe        # axe-core smoke test against index.html
-npm run pa11y      # Pa11y WCAG 2.1 AA audit of index.html
-npm run qa         # runs all of the above in sequence
+npm run axe        # axe-core WCAG 2.2 AA test against index.html
+npm run pa11y      # Pa11y WCAG 2.0 AA audit of index.html
+npm run test:jsdom # Node.js-based contrast function tests
+npm run qa         # runs svg:lint, axe, and pa11y in sequence
 ```
 
 `npm run svgo` reads every file in `./svg`, applies `svgo.config.mjs`, and writes the results back in-place while preserving accessibility metadata (IDs, `<title>`, `<desc>`, `viewBox`, etc.). The other scripts confirm the resulting markup stays accessible without needing to open a browser.
@@ -53,8 +56,9 @@ Each CLI command focuses on a different failure mode:
 - `npm run svg:lint` catches malformed markup, duplicate IDs, and missing namespaces before the SVG reaches the editor.
 - `npm run axe` exercises the shipped `index.html` with axe-core’s WCAG 2.2 AA rules to detect ARIA/semantics regressions.
 - `npm run pa11y` performs a second accessibility pass (keyboard traps, color contrast, etc.) so issues get surfaced even if the UI hasn’t been opened manually.
+- `npm run test:jsdom` validates contrast calculation functions (WCAG and APCA) using Node.js/VM without browser dependencies.
 
-Use `npm run qa` any time you add new UI features or SVG samples—the combined run will fail fast if any of the guardrails trip.
+Use `npm run qa` any time you add new UI features or SVG samples—the combined run will fail fast if any of the guardrails trip. For comprehensive validation including unit tests, run both `npm run qa` and `npm run test:jsdom`.
 
 ## 📋 Features
 
@@ -87,6 +91,20 @@ Following [Carie Fisher's Accessible SVG patterns](https://www.smashingmagazine.
 - Split-view preview (light/dark backgrounds)
 - Fully keyboard navigable
 
+## 📦 SVG Collection
+
+The `svg/` directory contains curated SVG examples for testing and demonstration:
+
+- **Local samples**: Copyright, Creative Commons, and DRM-related icons showcasing various accessibility patterns
+- **Remote examples**: `svg/remote/` contains SVGs fetched from external sources via `scripts/collect_svgviewer.js`
+- **Metadata tracking**: `svg/manifest.json` catalogs all local SVG files with checksums and metadata
+- **Index pages**: Both `svg/index.html` and `svg/remote/index.html` provide browsable galleries
+
+To update the remote SVG collection:
+```bash
+node scripts/collect_svgviewer.js
+```
+
 ## 🛠️ Technical Stack
 
 - **Framework**: Vanilla JS / Preact (via ESM)
@@ -98,7 +116,9 @@ Following [Carie Fisher's Accessible SVG patterns](https://www.smashingmagazine.
 
 This program is free software: you can redistribute it and/or modify it under the terms of the **GNU Affero General Public License** as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
 
-See [LICENSE](LICENSE) for full details.
+The full AGPL-3.0 license text is available at <https://www.gnu.org/licenses/agpl-3.0.txt>.
+
+All source files include the AGPL-3.0 license header as required.
 
 ## 🤝 Contributing
 
@@ -108,7 +128,28 @@ Contributions are welcome! Please ensure:
 - Accessibility standards (WCAG 2.2 AA) are met
 - SVG standards compliance
 
-## 📚 Resources
+## � File Structure
+
+```
+a11y-svg/
+├── index.html          # Main application entry point
+├── app.js              # Preact application (ES modules via CDN)
+├── styles.css          # Application styles with theme support
+├── package.json        # Dev dependencies for QA scripts
+├── svgo.config.mjs     # SVGO configuration preserving a11y attributes
+├── AGENTS.md           # AI agent instructions for development
+├── README.md           # This file
+├── scripts/            # Helper scripts
+│   └── collect_svgviewer.js  # Fetch remote SVG examples
+├── svg/                # SVG test samples and examples
+│   ├── manifest.json   # Catalog of local SVG files
+│   └── remote/         # Remote SVG examples
+└── tests/              # Test suites
+    ├── contrast.test.js # Contrast calculation validation
+    └── ui.test.js      # (Future) UI interaction tests
+```
+
+## �📚 Resources
 
 - [Accessible SVG Patterns](https://www.smashingmagazine.com/2021/05/accessible-svg-patterns-comparison/) by Carie Fisher
 - [WCAG 2.2 Guidelines](https://www.w3.org/WAI/WCAG22/quickref/)
@@ -116,6 +157,6 @@ Contributions are welcome! Please ensure:
 
 ## 🔗 Links
 
-- [Live Demo](https://yourusername.github.io/a11y-svg/)
-- [Report Issues](https://github.com/yourusername/a11y-svg/issues)
-- [Discussions](https://github.com/yourusername/a11y-svg/discussions)
+- [Live Demo](https://mgifford.github.io/a11y-svg/) (GitHub Pages)
+- [Report Issues](https://github.com/mgifford/a11y-svg/issues)
+- [Discussions](https://github.com/mgifford/a11y-svg/discussions)

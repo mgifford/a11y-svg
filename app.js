@@ -434,12 +434,41 @@ const App = () => {
         setUserHasInteracted(true);
     };
 
+    // Filename-like detection: avoid using filenames as title/desc
+    const looksLikeFilename = (s) => {
+        if (!s) return false;
+        const str = String(s).trim();
+        if (/\.[a-z0-9]{2,4}$/i.test(str)) return true; // has extension
+        if (/[\\/]/.test(str)) return true; // path-like
+        const base = (currentFileName || '').replace(/\.[^/.]+$/, '').toLowerCase();
+        if (base && str.toLowerCase() === base) return true; // matches file basename
+        return false;
+    };
+
+    const countWords = (s) => (String(s || '').trim().split(/\s+/).filter(Boolean).length);
+
+    const computeIntentDisplay = () => {
+        const t = (meta.title || '').trim();
+        const d = (meta.desc || '').trim();
+        const hasTitle = t.length > 0;
+        const hasDesc = d.length > 0;
+        const titleWords = countWords(t);
+        const descWords = countWords(d);
+        const titleLooksFile = looksLikeFilename(t);
+        const descLooksFile = looksLikeFilename(d);
+
+        if (!hasTitle && !hasDesc) return { display: 'Decorative', statusClass: 'status-yellow' };
+        if (hasDesc && !hasTitle) return { display: 'Error', statusClass: 'status-red' };
+        const isGood = hasTitle && hasDesc && titleWords >= 1 && titleWords <= 3 && descWords >= 5 && !titleLooksFile && !descLooksFile;
+        return { display: 'Informative', statusClass: isGood ? 'status-green' : '' };
+    };
+
     const handleInlineMetaChange = (field, value) => {
         setUserHasInteracted(true);
-        setMeta(prev => ({ ...prev, [field]: value }));
-        if (intent === 'decorative' && value && value.trim()) {
-            setIntent('informational');
-        }
+        const nextMeta = { ...meta, [field]: value };
+        setMeta(nextMeta);
+        const hasTitle = String(nextMeta.title || '').trim().length > 0;
+        setIntent(hasTitle ? 'informational' : 'decorative');
     };
 
     const triggerFilePicker = () => {
@@ -1077,6 +1106,18 @@ const App = () => {
 
     const ingestOriginalInput = (rawCode, statusMsg = 'Source updated') => {
         const source = rawCode || '';
+        // Seed meta & intent from existing SVG
+        try {
+            const doc = new DOMParser().parseFromString(source, 'image/svg+xml');
+            const svgEl = doc.querySelector('svg');
+            const tEl = svgEl && svgEl.querySelector('title');
+            const dEl = svgEl && svgEl.querySelector('desc');
+            const tText = (tEl && tEl.textContent) ? tEl.textContent.trim() : '';
+            const dText = (dEl && dEl.textContent) ? dEl.textContent.trim() : '';
+            setMeta({ title: tText, desc: dText });
+            setIntent(tText ? 'informational' : 'decorative');
+        } catch (e) { /* ignore parse errors */ }
+
         setOriginalCode(source);
         const pretty = source ? beautifySvg(source) : '';
         setActiveEditorTab('beautified');
@@ -1465,38 +1506,55 @@ const App = () => {
                 h('input', { type: 'file', accept: 'image/svg+xml', ref: fileInputRef, style: 'display:none', onChange: handleFileInputChange })
             ]),
 
-            h('div', { class: 'sidebar-section intent-card' }, [
-                h('span', { class: 'sidebar-label' }, 'Accessibility Intent'),
-                h('div', { class: 'intent-inline' }, [
-                    h('div', { class: 'intent-status' }, [
-                        h('div', { class: `status-dot ${currentIntent.class}` }),
-                        h('span', {}, currentIntent.label)
+            (() => {
+                const disp = computeIntentDisplay();
+                const cardClass = `sidebar-section intent-card${disp.statusClass ? ' ' + disp.statusClass : ''}`;
+                return h('div', { class: cardClass }, [
+                    h('span', { class: 'sidebar-label' }, `Accessibility Intent: ${disp.display}`),
+                    h('div', { class: 'intent-inline' }, [
+                        h('div', { class: 'intent-status' }, [
+                            h('div', { class: `status-dot ${disp.display.toLowerCase()}` }),
+                            h('span', {}, disp.display)
+                        ])
                     ]),
-                    h('button', { class: 'icon-btn', title: 'Edit Accessibility Settings', onClick: openMetaDialog }, '⚙️')
-                ]),
-                h('div', { class: 'meta-fields' }, [
-                    h('label', { class: 'meta-field' }, [
-                        h('span', {}, 'Title'),
-                        h('input', {
-                            type: 'text',
-                            value: meta.title,
-                            placeholder: 'Add a short, unique title',
-                            onInput: (e) => handleInlineMetaChange('title', e.target.value)
-                        })
+                    h('div', { class: 'meta-fields' }, [
+                        h('label', { class: 'meta-field' }, [
+                            h('span', {}, 'Title'),
+                            h('input', {
+                                type: 'text',
+                                value: meta.title,
+                                placeholder: 'Add a short, unique title',
+                                onInput: (e) => handleInlineMetaChange('title', e.target.value)
+                            })
+                        ]),
+                        h('label', { class: 'meta-field' }, [
+                            h('span', {}, 'Description'),
+                            h('textarea', {
+                                rows: 2,
+                                value: meta.desc,
+                                placeholder: 'Describe the visual meaning',
+                                onInput: (e) => handleInlineMetaChange('desc', e.target.value)
+                            })
+                        ])
                     ]),
-                    h('label', { class: 'meta-field' }, [
-                        h('span', {}, 'Description'),
-                        h('textarea', {
-                            rows: 2,
-                            value: meta.desc,
-                            placeholder: 'Describe the visual meaning',
-                            onInput: (e) => handleInlineMetaChange('desc', e.target.value)
-                        })
+                    looksLikeFilename(meta.title) && h('p', { class: 'meta-hint warning' }, 'Title looks like a filename. Use human-readable words.'),
+                    looksLikeFilename(meta.desc) && h('p', { class: 'meta-hint warning' }, 'Description looks like a filename. Use a sentence.'),
+                    (!meta.title || !meta.desc) && h('p', { class: 'meta-hint' }, 'If this image conveys meaning, add a title and description so screen readers announce it.'),
+                    h('div', { style: 'margin-top:0.5rem;' }, [
+                        h('button', { 
+                            class: 'small', 
+                            onClick: () => { 
+                                const hasTitle = String(meta.title || '').trim().length > 0; 
+                                setIntent(hasTitle ? 'informational' : 'decorative'); 
+                                handleOptimize(latestSvgRef.current || svgInput || ''); 
+                                setA11yStatus('Accessibility meta saved'); 
+                                setTimeout(() => setA11yStatus(''), 1000); 
+                            },
+                            title: 'Save accessibility title/description into the SVG'
+                        }, 'Save')
                     ])
-                ]),
-                (!meta.title || !meta.desc) && h('p', { class: 'meta-hint' }, 'If this image conveys meaning, add a title and description so screen readers announce it.'),
-                intent === 'decorative' && h('p', { class: 'meta-hint warning' }, 'Currently marked Decorative. Switch to Informational if this SVG carries meaning.')
-            ]),
+                ]);
+            })(),
 
             // 1. Theming
             h('div', { class: 'sidebar-section' }, [
@@ -1989,55 +2047,7 @@ const App = () => {
 
             // (Optimized code moved to bottom editor)
 
-            // Dialog for Intent & Meta
-            h('dialog', { ref: dialogRef }, [
-                h('h3', {}, 'Accessibility Settings'),
-                
-                h('div', { class: 'form-group' }, [
-                    h('label', {}, 'Intent:'),
-                    h('div', { class: 'radio-group' }, [
-                        h('div', { class: 'radio-item' }, [
-                            h('input', { type: 'radio', name: 'd-intent', checked: tempIntent === 'decorative', onChange: () => setTempIntent('decorative') }),
-                            ' Decorative (Hidden)'
-                        ]),
-                        h('div', { class: 'radio-item' }, [
-                            h('input', { type: 'radio', name: 'd-intent', checked: tempIntent === 'informational', onChange: () => setTempIntent('informational') }),
-                            ' Informational (Title & Desc)'
-                        ]),
-                        h('div', { class: 'radio-item' }, [
-                            h('input', { type: 'radio', name: 'd-intent', checked: tempIntent === 'interactive', onChange: () => setTempIntent('interactive') }),
-                            ' Interactive (Focusable)'
-                        ])
-                    ])
-                ]),
-
-                tempIntent === 'informational' && h('div', { style: 'margin-top:1rem;' }, [
-                    h('div', { class: 'form-group' }, [
-                        h('label', { for: 'popup-title' }, 'Title (Required)'),
-                        h('input', { 
-                            type: 'text', id: 'popup-title', 
-                            value: tempMeta.title,
-                            onInput: (e) => setTempMeta({ ...tempMeta, title: e.target.value })
-                        })
-                    ]),
-                    h('div', { class: 'form-group' }, [
-                        h('label', { for: 'popup-desc' }, 'Description'),
-                        h('textarea', { 
-                            id: 'popup-desc', rows: 2, 
-                            value: tempMeta.desc,
-                            onInput: (e) => setTempMeta({ ...tempMeta, desc: e.target.value })
-                        })
-                    ])
-                ]),
-
-                h('div', { class: 'btn-group', style: 'justify-content: flex-end; margin-top:1.5rem;' }, [
-                    h('button', { class: 'secondary', onClick: () => closeMetaDialog(false) }, 'Cancel'),
-                    h('button', { 
-                        onClick: () => closeMetaDialog(true),
-                        disabled: tempIntent === 'informational' && !tempMeta.title
-                    }, 'Save Changes')
-                ])
-            ]),
+            // Intent dialog removed — inline editing covers the workflow
 
             // Status Messages (Top right toast or similar? Let's keep visually hidden mainly unless error)
              a11yStatus.startsWith('Error') && h('div', { 
