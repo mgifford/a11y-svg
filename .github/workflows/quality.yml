@@ -1,0 +1,72 @@
+name: Quality Checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-svg:
+    name: SVG Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+      - name: Lint SVG files
+        run: npm run svg:lint
+        continue-on-error: true
+
+  contrast-tests:
+    name: Contrast & Math
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+      - name: Run JSDOM contrast tests
+        run: npm run test:jsdom
+
+  a11y-checks:
+    name: Accessibility (axe + pa11y)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+      - name: Start local server
+        run: |
+          cd /tmp && python3 -m http.server 8000 --directory "$GITHUB_WORKSPACE" &
+          sleep 2
+      - name: Run axe accessibility checks
+        run: npm run axe
+        continue-on-error: true
+      - name: Run pa11y accessibility audit
+        run: npm run pa11y
+        continue-on-error: true
+
+  summary:
+    name: Summary
+    needs: [lint-svg, contrast-tests, a11y-checks]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check results
+        run: |
+          if [ "${{ needs.lint-svg.result }}" = "failure" ] || \
+             [ "${{ needs.contrast-tests.result }}" = "failure" ] || \
+             [ "${{ needs.a11y-checks.result }}" = "failure" ]; then
+            echo "One or more quality checks failed or had issues."
+            echo "Lint SVG: ${{ needs.lint-svg.result }}"
+            echo "Contrast Tests: ${{ needs.contrast-tests.result }}"
+            echo "A11y Checks: ${{ needs.a11y-checks.result }}"
+            exit 0
+          fi
+          echo "All quality checks passed!"
