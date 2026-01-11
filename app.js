@@ -406,6 +406,11 @@ const App = () => {
         } catch (e) { return { finalize: true }; }
     });
 
+    // Theme (system/light/dark)
+    const [theme, setTheme] = useState(() => {
+        try { return localStorage.getItem('theme') || 'system'; } catch (e) { return 'system'; }
+    });
+
     // --- Helpers ---
 
     const addHighlightToken = (token) => {
@@ -1232,6 +1237,20 @@ const App = () => {
         latestSvgRef.current = svgInput || '';
     }, [svgInput]);
 
+    // Apply selected theme
+    useEffect(() => {
+        const root = document.documentElement;
+        if (!root) return;
+        if (theme === 'light') {
+            root.setAttribute('data-theme', 'light');
+        } else if (theme === 'dark') {
+            root.setAttribute('data-theme', 'dark');
+        } else {
+            root.removeAttribute('data-theme'); // system
+        }
+        try { localStorage.setItem('theme', theme); } catch (e) {}
+    }, [theme]);
+
     useEffect(() => {
         if (!latestSvgRef.current || !intent) return;
         handleOptimize(latestSvgRef.current);
@@ -1476,7 +1495,20 @@ const App = () => {
         h('aside', { class: 'sidebar' }, [
             h('header', {}, [
                 h('h1', {}, 'A11y-SVG-Studio'),
-                h('p', {}, 'Optimize & Accessify')
+                h('div', { class: 'theme-control' }, [
+                    h('label', { for: 'theme-select' }, 'Theme:'),
+                    h('select', {
+                        id: 'theme-select',
+                        class: 'theme-select',
+                        value: theme,
+                        onChange: (e) => setTheme(e.target.value),
+                        'aria-label': 'Interface theme'
+                    }, [
+                        h('option', { value: 'system' }, 'System'),
+                        h('option', { value: 'light' }, 'Light'),
+                        h('option', { value: 'dark' }, 'Dark')
+                    ])
+                ])
             ]),
 
             h('div', { class: 'sidebar-section input-card' }, [

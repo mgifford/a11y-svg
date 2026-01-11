@@ -16,12 +16,37 @@
         --text-body: #e0e0e0;
         --primary: #90caf9;
         --primary-text: #000000;
-        --border: #424242;
+        --border: #6e6e6e; /* raise contrast for borders in dark */
         --card-bg: #1e1e1e;
         --focus-ring: #90caf9;
         --error: #ef5350;
         --success: #66bb6a;
     }
+}
+
+/* Explicit theme overrides (manual toggle has priority) */
+:root[data-theme="light"] {
+    --bg-body: #ffffff;
+    --text-body: #1a1a1a;
+    --primary: #005a9c;
+    --primary-text: #ffffff;
+    --border: #ced4da;
+    --card-bg: #f8f9fa;
+    --focus-ring: #005a9c;
+    --error: #d32f2f;
+    --success: #2e7d32;
+}
+
+:root[data-theme="dark"] {
+    --bg-body: #121212;
+    --text-body: #e0e0e0;
+    --primary: #90caf9;
+    --primary-text: #000000;
+    --border: #6e6e6e; /* ensure ≥3:1 against #121212 */
+    --card-bg: #1e1e1e;
+    --focus-ring: #90caf9;
+    --error: #ef5350;
+    --success: #66bb6a;
 }
 
 body {
@@ -60,6 +85,20 @@ header p {
     margin: 0;
     font-size: 0.85rem;
     opacity: 0.8;
+}
+
+.theme-control {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+.theme-select {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg-body);
+    color: var(--text-body);
+    padding: 0.25rem 0.5rem;
+    font-size: 0.85rem;
 }
 
 .app-layout {
