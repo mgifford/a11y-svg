@@ -40,6 +40,7 @@ lerna-debug.log*
 
 # Optional: Uncomment if you add node_modules for development tooling
 node_modules/
-package-lock.json
-yarn.lock
-pnpm-lock.yaml
+# Keep lockfiles for reproducible CI installs
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
