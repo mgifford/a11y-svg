@@ -667,9 +667,11 @@ const App = () => {
             }
 
             // Meta checks: title/desc for informational intent
+            // Check user-provided meta (Accessibility Intent block), not raw SVG tags
+            // This avoids false positives when user has filled in the form but hasn't clicked Save yet.
             if (intent === 'informational') {
-                if (!svgEl.querySelector('title')) issues.push({ level: 'error', message: 'Missing <title> element for informational SVG' });
-                if (!svgEl.querySelector('desc')) issues.push({ level: 'warning', message: 'Missing <desc> element for informational SVG' });
+                if (!meta.title) issues.push({ level: 'error', message: 'Missing Title in Accessibility Intent (required for informational SVG)' });
+                if (!meta.desc) issues.push({ level: 'warning', message: 'Missing Description in Accessibility Intent (recommended for informational SVG)' });
             }
 
             // Color contrast checks
