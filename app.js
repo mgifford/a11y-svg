@@ -1,5 +1,5 @@
 import { h, render } from 'https://esm.sh/preact@10.19.3';
-import { useState, useEffect, useRef, useMemo, useLayoutEffect } from 'https://esm.sh/preact@10.19.3/hooks';
+import { useState, useEffect, useRef, useMemo, useLayoutEffect, useCallback } from 'https://esm.sh/preact@10.19.3/hooks';
 import { optimize } from 'https://esm.sh/svgo@3.2.0/dist/svgo.browser.js';
 import xmlFormatter from 'https://esm.sh/xml-formatter@3.6.0';
 
@@ -448,6 +448,7 @@ const buildLightDarkPreview = (svgString) => {
     const latestSvgRef = useRef('');
     const lintListRef = useRef(null);
     const fileInputRef = useRef(null);
+    const [caretStyle, setCaretStyle] = useState({ top: 0, left: 0, height: 18, visible: false });
     const [accordionState, setAccordionState] = useState(() => {
         try {
             return JSON.parse(localStorage.getItem('accordionState') || '{"finalize":true}');
@@ -733,15 +734,33 @@ const buildLightDarkPreview = (svgString) => {
                 const isText = !!c.isText;
                 const isLarge = !!c.isLarge;
                 const originals = c.originals || [];
+                const targetLabel = isText ? (isLarge ? 'large text' : 'text') : 'non-text graphics';
+
                 // WCAG: compute against both light and dark backgrounds
                 const ratioLight = getContrastRatio(hex, bgLight);
                 const ratioDark = getContrastRatio(hex, bgDark);
-                const worstRatio = Math.min(ratioLight, ratioDark);
-                const wcagLevel = getWCAGLevel(worstRatio, isText, isLarge);
-                if (wcagLevel === 'Fail') {
-                    // suggest a color using suggestAccessibleColor
+                const wcagLightLevel = getWCAGLevel(ratioLight, isText, isLarge);
+                const wcagDarkLevel = getWCAGLevel(ratioDark, isText, isLarge);
+                const wcagFail = wcagLightLevel === 'Fail' || wcagDarkLevel === 'Fail';
+                if (wcagFail) {
                     const suggested = suggestAccessibleColor(hex, bgLight, bgDark, isText, contrastMode);
-                    issues.push({ level: 'warning', message: `Color ${hex} fails WCAG contrast (ratios: ${ratioLight.toFixed(2)} / ${ratioDark.toFixed(2)}) for ${isText ? 'text' : 'graphics'}`, type: 'color', hex, originals, suggested });
+                    const wcagDetail = {
+                        check: 'WCAG 2.2',
+                        target: targetLabel,
+                        requirement: isText ? (isLarge ? '≥ 3.0:1' : '≥ 4.5:1') : '≥ 3.0:1',
+                        light: {
+                            background: bgLight,
+                            ratio: ratioLight,
+                            status: wcagLightLevel === 'Fail' ? 'Fail' : wcagLightLevel
+                        },
+                        dark: {
+                            background: bgDark,
+                            ratio: ratioDark,
+                            status: wcagDarkLevel === 'Fail' ? 'Fail' : wcagDarkLevel
+                        }
+                    };
+                    const heading = `Color ${hex} fails WCAG contrast for ${targetLabel}`;
+                    issues.push({ level: 'warning', type: 'color', hex, originals, suggested, heading, detail: wcagDetail, findingCount: 1 });
                 }
 
                 // APCA: check signed Lc values
@@ -749,10 +768,26 @@ const buildLightDarkPreview = (svgString) => {
                 const apcaDark = getAPCAContrast(hex, bgDark);
                 const absLight = Math.abs(apcaLight);
                 const absDark = Math.abs(apcaDark);
-                // thresholds: AA ~75
-                if (absLight < 75 && absDark < 75) {
+                const apcaThreshold = isText ? 75 : 60;
+                if (absLight < apcaThreshold || absDark < apcaThreshold) {
                     const suggested2 = suggestAccessibleColor(hex, bgLight, bgDark, isText, 'apca');
-                    issues.push({ level: 'warning', message: `Color ${hex} fails APCA (Lc: ${apcaLight.toFixed(1)} / ${apcaDark.toFixed(1)})`, type: 'color', hex, originals, suggested: suggested2 });
+                    const apcaDetail = {
+                        check: 'APCA',
+                        target: targetLabel,
+                        requirement: `≥ ${apcaThreshold} Lc`,
+                        light: {
+                            background: bgLight,
+                            lc: apcaLight,
+                            status: absLight >= apcaThreshold ? 'Pass' : 'Fail'
+                        },
+                        dark: {
+                            background: bgDark,
+                            lc: apcaDark,
+                            status: absDark >= apcaThreshold ? 'Pass' : 'Fail'
+                        }
+                    };
+                    const heading = `Color ${hex} fails APCA contrast for ${targetLabel}`;
+                    issues.push({ level: 'warning', type: 'color', hex, originals, suggested: suggested2, heading, detail: apcaDetail, findingCount: 1 });
                 }
             });
 
@@ -760,6 +795,66 @@ const buildLightDarkPreview = (svgString) => {
             issues.push({ level: 'error', message: `Lint error: ${e && e.message ? e.message : String(e)}` });
         }
         return issues;
+    };
+
+    const computeCaretPosition = (textarea) => {
+        if (!textarea || typeof textarea.selectionStart !== 'number') return null;
+        const doc = textarea.ownerDocument || document;
+        const win = doc.defaultView || window;
+        const style = win.getComputedStyle(textarea);
+
+        const mirror = doc.createElement('div');
+        mirror.style.position = 'absolute';
+        mirror.style.visibility = 'hidden';
+        mirror.style.whiteSpace = 'pre-wrap';
+        mirror.style.wordBreak = 'break-word';
+        mirror.style.top = '0';
+        mirror.style.left = '-9999px';
+        mirror.style.boxSizing = 'border-box';
+        mirror.style.padding = style.padding;
+        mirror.style.border = style.border;
+        mirror.style.fontFamily = style.fontFamily;
+        mirror.style.fontSize = style.fontSize;
+        mirror.style.fontWeight = style.fontWeight;
+        mirror.style.fontStyle = style.fontStyle;
+        mirror.style.letterSpacing = style.letterSpacing;
+        mirror.style.textTransform = style.textTransform;
+        mirror.style.textAlign = style.textAlign;
+        mirror.style.lineHeight = style.lineHeight;
+        mirror.style.tabSize = style.tabSize;
+        mirror.style.width = `${textarea.clientWidth}px`;
+        mirror.style.height = 'auto';
+        mirror.style.overflow = 'hidden';
+
+        const tabSize = Math.max(parseInt(style.tabSize, 10) || 2, 1);
+        const replaceTabs = (value) => value.replace(/\t/g, ' '.repeat(tabSize));
+
+        const selectionIndex = textarea.selectionStart;
+        const before = replaceTabs(textarea.value.slice(0, selectionIndex));
+        const beforeAdjusted = before.replace(/ /g, '\u00a0').replace(/\n$/g, '\n\u200b');
+        mirror.textContent = beforeAdjusted;
+
+        const caretMarker = doc.createElement('span');
+        const remainder = textarea.value.slice(selectionIndex);
+        caretMarker.textContent = remainder.length > 0 ? replaceTabs(remainder[0]) : '\u200b';
+        mirror.appendChild(caretMarker);
+
+        doc.body.appendChild(mirror);
+        const mirrorRect = mirror.getBoundingClientRect();
+        const caretRect = caretMarker.getBoundingClientRect();
+        const top = caretRect.top - mirrorRect.top;
+        const left = caretRect.left - mirrorRect.left;
+        doc.body.removeChild(mirror);
+
+        const borderLeft = parseFloat(style.borderLeftWidth) || 0;
+        const borderTop = parseFloat(style.borderTopWidth) || 0;
+        const lineHeight = parseFloat(style.lineHeight) || parseFloat(style.fontSize) || 16;
+
+        return {
+            top: top - textarea.scrollTop + borderTop,
+            left: left - textarea.scrollLeft + borderLeft,
+            height: lineHeight
+        };
     };
 
 
@@ -1249,6 +1344,20 @@ const buildLightDarkPreview = (svgString) => {
         commitBeautifiedChange(pretty, statusMsg);
     };
 
+    const updateBeautifiedCaret = useCallback(() => {
+        const textarea = beautifiedTextareaRef.current;
+        if (!textarea || activeEditorTab !== 'beautified' || document.activeElement !== textarea) {
+            setCaretStyle(prev => (prev.visible ? { ...prev, visible: false } : prev));
+            return;
+        }
+        const coords = computeCaretPosition(textarea);
+        if (!coords) {
+            setCaretStyle(prev => (prev.visible ? { ...prev, visible: false } : prev));
+            return;
+        }
+        setCaretStyle({ top: coords.top, left: coords.left, height: coords.height, visible: true });
+    }, [activeEditorTab]);
+
     // Keyboard navigation for lint list: Up/Down to move, Enter to trigger Fix
     const handleLintKeyDown = (e) => {
         const container = lintListRef.current;
@@ -1454,6 +1563,44 @@ const buildLightDarkPreview = (svgString) => {
         }
     }, [svgInput, processedSvg.code]);
 
+    const canonicalBeautified = beautifiedCode || svgInput || '';
+    const canonicalOriginal = originalCode || svgInput || '';
+    const canonicalOptimized = optimizedCode || processedSvg.code || '';
+    const beautifiedDisplay = useMemo(() => (canonicalBeautified || '') + BEAUTIFIED_DISPLAY_SUFFIX, [canonicalBeautified]);
+    const optimizedDisplay = useMemo(() => (canonicalOptimized || '') + OPTIMIZED_DISPLAY_SUFFIX, [canonicalOptimized]);
+
+    useEffect(() => {
+        const textarea = beautifiedTextareaRef.current;
+        if (!textarea) return;
+        const update = () => updateBeautifiedCaret();
+        const handleFocus = () => updateBeautifiedCaret();
+        const handleBlur = () => {
+            setCaretStyle(prev => (prev.visible ? { ...prev, visible: false } : prev));
+        };
+        const events = ['input', 'keyup', 'keydown', 'click', 'mouseup'];
+        events.forEach(evt => textarea.addEventListener(evt, update));
+        textarea.addEventListener('scroll', update);
+        textarea.addEventListener('focus', handleFocus);
+        textarea.addEventListener('blur', handleBlur);
+        window.addEventListener('resize', update);
+        updateBeautifiedCaret();
+        return () => {
+            events.forEach(evt => textarea.removeEventListener(evt, update));
+            textarea.removeEventListener('scroll', update);
+            textarea.removeEventListener('focus', handleFocus);
+            textarea.removeEventListener('blur', handleBlur);
+            window.removeEventListener('resize', update);
+        };
+    }, [updateBeautifiedCaret, beautifiedDisplay]);
+
+    useEffect(() => {
+        if (activeEditorTab !== 'beautified') {
+            setCaretStyle(prev => (prev.visible ? { ...prev, visible: false } : prev));
+        } else {
+            updateBeautifiedCaret();
+        }
+    }, [activeEditorTab, updateBeautifiedCaret, beautifiedDisplay]);
+
     const handleDragOver = (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -1590,11 +1737,6 @@ const buildLightDarkPreview = (svgString) => {
         return { label: 'Unknown', class: '', icon: '?' };
     };
     const currentIntent = getIntentLabel();
-    const canonicalBeautified = beautifiedCode || svgInput || '';
-    const canonicalOriginal = originalCode || svgInput || '';
-    const canonicalOptimized = optimizedCode || processedSvg.code || '';
-    const beautifiedDisplay = useMemo(() => (canonicalBeautified || '') + BEAUTIFIED_DISPLAY_SUFFIX, [canonicalBeautified]);
-    const optimizedDisplay = useMemo(() => (canonicalOptimized || '') + OPTIMIZED_DISPLAY_SUFFIX, [canonicalOptimized]);
 
     useLayoutEffect(() => {
         if (!beautifiedSelectionRef.current || !beautifiedSelectionRef.current.restore) return;
@@ -2126,16 +2268,32 @@ const buildLightDarkPreview = (svgString) => {
                                     const target = e.target;
                                     snapshotBeautifiedSelection(target, true);
                                     commitBeautifiedChange(target.value, 'Beautified updated', { optimize: false });
+                                    updateBeautifiedCaret();
                                 },
+                                onFocus: () => updateBeautifiedCaret(),
                                 onBlur: (e) => {
                                     snapshotBeautifiedSelection(e.target, false);
                                     commitBeautifiedChange(e.target.value, 'Beautified synced');
                                 },
-                                onSelect: (e) => snapshotBeautifiedSelection(e.target, false),
-                                onScroll: (e) => snapshotBeautifiedSelection(e.target, false),
+                                onSelect: (e) => {
+                                    snapshotBeautifiedSelection(e.target, false);
+                                    updateBeautifiedCaret();
+                                },
+                                onScroll: (e) => {
+                                    snapshotBeautifiedSelection(e.target, false);
+                                    updateBeautifiedCaret();
+                                },
                                 spellcheck: false,
                                 wrap: 'off',
                                 'aria-label': 'Beautified SVG editor'
+                            }),
+                            h('div', {
+                                class: `custom-caret${caretStyle.visible ? ' is-visible' : ''}`,
+                                style: {
+                                    top: `${caretStyle.top}px`,
+                                    left: `${caretStyle.left}px`,
+                                    height: `${caretStyle.height}px`
+                                }
                             })
                         ])
                     ]),
@@ -2179,8 +2337,28 @@ const buildLightDarkPreview = (svgString) => {
                 lintResults.forEach(it => {
                     if (it && it.type === 'color' && it.hex) {
                         const key = it.hex.toLowerCase();
-                        const entry = colorMap.get(key) || { type: 'color', hex: key, messages: [], originals: new Set(), suggested: null };
-                        entry.messages.push(it.message || '');
+                        const entry = colorMap.get(key) || {
+                            type: 'color',
+                            hex: key,
+                            heading: null,
+                            target: null,
+                            details: [],
+                            originals: new Set(),
+                            suggested: null,
+                            fallbackMessages: [],
+                            findingCount: 0
+                        };
+                        if (it.heading && !entry.heading) entry.heading = it.heading;
+                        if (!entry.target && it.detail && it.detail.target) entry.target = it.detail.target;
+                        if (it.detail) entry.details.push(it.detail);
+                        if (Array.isArray(it.messages) && it.messages.length) {
+                            it.messages.forEach(msg => {
+                                if (msg && !entry.fallbackMessages.includes(msg)) entry.fallbackMessages.push(msg);
+                            });
+                        } else if (it.message) {
+                            if (!entry.fallbackMessages.includes(it.message)) entry.fallbackMessages.push(it.message);
+                        }
+                        entry.findingCount += it.findingCount || 1;
                         (it.originals || []).forEach(o => entry.originals.add(o));
                         if (it.suggested && !entry.suggested) entry.suggested = it.suggested;
                         colorMap.set(key, entry);
@@ -2188,6 +2366,9 @@ const buildLightDarkPreview = (svgString) => {
                         combined.push(it);
                     }
                 });
+                const formatBg = (bg) => (typeof bg === 'string' ? bg.toUpperCase() : String(bg || ''));
+                const formatRatio = (val) => (typeof val === 'number' && Number.isFinite(val) ? val.toFixed(2) : 'n/a');
+                const formatLc = (val) => (typeof val === 'number' && Number.isFinite(val) ? val.toFixed(1) : 'n/a');
                 for (const v of colorMap.values()) {
                     const hex = v.hex;
                     const isText = true;
@@ -2204,8 +2385,36 @@ const buildLightDarkPreview = (svgString) => {
                     if (suggestedWCAG && passesBoth(suggestedWCAG)) chosen = suggestedWCAG;
                     else if (suggestedAPCA && passesBoth(suggestedAPCA)) chosen = suggestedAPCA;
                     v.suggested = chosen;
+                    v.hex = typeof hex === 'string' ? hex.toUpperCase() : hex;
+                    const detailLines = [];
+                    v.details.forEach(detail => {
+                        if (!detail || !detail.check) return;
+                        if (detail.check === 'WCAG 2.2') {
+                            if (detail.light && typeof detail.light === 'object') {
+                                detailLines.push(`WCAG light bg ${formatBg(detail.light.background)}: ${formatRatio(detail.light.ratio)}:1 (${detail.light.status}; needs ${detail.requirement})`);
+                            }
+                            if (detail.dark && typeof detail.dark === 'object') {
+                                detailLines.push(`WCAG dark bg ${formatBg(detail.dark.background)}: ${formatRatio(detail.dark.ratio)}:1 (${detail.dark.status}; needs ${detail.requirement})`);
+                            }
+                        } else if (detail.check === 'APCA') {
+                            if (detail.light && typeof detail.light === 'object') {
+                                detailLines.push(`APCA light bg ${formatBg(detail.light.background)}: Lc ${formatLc(detail.light.lc)} (${detail.light.status}; needs ${detail.requirement})`);
+                            }
+                            if (detail.dark && typeof detail.dark === 'object') {
+                                detailLines.push(`APCA dark bg ${formatBg(detail.dark.background)}: Lc ${formatLc(detail.dark.lc)} (${detail.dark.status}; needs ${detail.requirement})`);
+                            }
+                        }
+                    });
+                    const heading = v.heading || `Color ${v.hex} has contrast issues for ${v.target || 'this usage'}`;
+                    const mergedLines = [heading, ...detailLines];
+                    if (mergedLines.length === 1 && v.fallbackMessages.length) {
+                        mergedLines.push(...v.fallbackMessages);
+                    }
+                    v.messages = mergedLines.filter((line, idx, arr) => line && arr.indexOf(line) === idx);
+                    v.message = v.messages.length ? v.messages.join(' — ') : heading;
                     v.originals = Array.from(v.originals);
-                    v.message = v.messages && v.messages.length ? v.messages.join(' — ') : `Color ${v.hex} has contrast issues`;
+                    v.findingCount = v.findingCount || v.details.length || 1;
+                    delete v.fallbackMessages;
                     combined.push(v);
                 }
 
@@ -2217,24 +2426,34 @@ const buildLightDarkPreview = (svgString) => {
 
                 return h('div', { class: 'lint-panel', role: 'region', 'aria-label': 'Lint results' }, [
                     h('div', { class: 'lint-header' }, [
-                        h('span', { class: 'lint-title' }, `Lint: ${lintResults.length} issue${lintResults.length !== 1 ? 's' : ''}`),
+                        h('span', { class: 'lint-title' }, `Lint: ${combined.length} item${combined.length !== 1 ? 's' : ''}${lintResults.length !== combined.length ? ` (${lintResults.length} finding${lintResults.length !== 1 ? 's' : ''})` : ''}`),
                         h('button', { class: 'lint-close', onClick: () => setLintPanelVisible(false), 'aria-label': 'Hide lint panel' }, '×')
                     ]),
                     combined.length === 0 && h('div', { style: 'color: #2b8a3e; padding:0.5rem;' }, 'No issues found'),
-                    h('div', { class: 'lint-top' }, combined.slice(0, 2).map((it, idx) => h('div', { key: `top-${idx}`, class: 'lint-item lint-top-item', role: 'listitem', tabIndex: 0, 'aria-label': `${it.hex || ''} issues`, onKeyDown: handleLintKeyDown }, [
-                        h('div', { class: 'lint-message' }, Array.isArray(it.messages) ? it.messages.map((m, i) => h('div', { key: `m-${i}` }, m)) : (it.message || '')),
-                        h('div', { class: 'lint-action' }, [
-                            h('span', { class: 'suggest' }, it.suggested || ''),
-                            h('button', { class: 'small', onClick: () => applyColorFix((it.originals && it.originals[0]) || it.hex, it.suggested || it.hex), 'aria-label': `Fix color ${it.hex || ''}` }, 'Fix')
-                        ])
-                    ]))),
-                    h('div', { class: 'lint-list', role: 'list', ref: lintListRef, tabIndex: 0, onKeyDown: handleLintKeyDown }, combined.slice(2).map((it, idx) => h('div', { key: `rest-${idx}`, class: 'lint-item', role: 'listitem', tabIndex: 0, 'aria-label': `${it.hex || ''} issues` }, [
-                        h('div', { class: 'lint-message' }, Array.isArray(it.messages) ? it.messages.map((m, i) => h('div', { key: `m-${i}` }, m)) : (it.message || '')),
-                        h('div', { class: 'lint-action' }, [
-                            h('span', { class: 'suggest' }, it.suggested || ''),
-                            h('button', { class: 'small', onClick: () => applyColorFix((it.originals && it.originals[0]) || it.hex, it.suggested || it.hex), 'aria-label': `Fix color ${it.hex || ''}` }, 'Fix')
-                        ])
-                    ])))
+                    h('div', { class: 'lint-top' }, combined.slice(0, 2).map((it, idx) => {
+                        const baseLabel = it.hex ? `Color ${it.hex}` : 'Lint issue';
+                        const accessibleLabel = it.findingCount && it.findingCount > 1 ? `${baseLabel} (${it.findingCount} findings)` : baseLabel;
+                        return h('div', { key: `top-${idx}`, class: 'lint-item lint-top-item', role: 'listitem', tabIndex: 0, 'aria-label': accessibleLabel, onKeyDown: handleLintKeyDown }, [
+                            h('div', { class: 'lint-message' }, Array.isArray(it.messages) ? it.messages.map((m, i) => h('div', { key: `m-${i}` }, m)) : (it.message || '')),
+                            h('div', { class: 'lint-action' }, [
+                                it.findingCount && it.findingCount > 1 && h('span', { class: 'lint-count' }, `${it.findingCount} findings`),
+                                h('span', { class: 'suggest' }, it.suggested || ''),
+                                h('button', { class: 'small', onClick: () => applyColorFix((it.originals && it.originals[0]) || it.hex, it.suggested || it.hex), 'aria-label': `Fix color ${it.hex || ''}` }, 'Fix')
+                            ])
+                        ]);
+                    })),
+                    h('div', { class: 'lint-list', role: 'list', ref: lintListRef, tabIndex: 0, onKeyDown: handleLintKeyDown }, combined.slice(2).map((it, idx) => {
+                        const baseLabel = it.hex ? `Color ${it.hex}` : 'Lint issue';
+                        const accessibleLabel = it.findingCount && it.findingCount > 1 ? `${baseLabel} (${it.findingCount} findings)` : baseLabel;
+                        return h('div', { key: `rest-${idx}`, class: 'lint-item', role: 'listitem', tabIndex: 0, 'aria-label': accessibleLabel }, [
+                            h('div', { class: 'lint-message' }, Array.isArray(it.messages) ? it.messages.map((m, i) => h('div', { key: `m-${i}` }, m)) : (it.message || '')),
+                            h('div', { class: 'lint-action' }, [
+                                it.findingCount && it.findingCount > 1 && h('span', { class: 'lint-count' }, `${it.findingCount} findings`),
+                                h('span', { class: 'suggest' }, it.suggested || ''),
+                                h('button', { class: 'small', onClick: () => applyColorFix((it.originals && it.originals[0]) || it.hex, it.suggested || it.hex), 'aria-label': `Fix color ${it.hex || ''}` }, 'Fix')
+                            ])
+                        ]);
+                    }))
                 ]);
             })() : null,
 

@@ -612,6 +612,14 @@ dialog h3 { margin-top: 0; }
 .lint-top-item { background: rgba(0,0,0,0.02); padding:0.4rem; border-radius:6px; }
 .lint-message { color: var(--text-body); font-size: 0.95rem; flex:1; }
 .lint-action { display:flex; align-items:center; gap:0.5rem; margin-left:0.6rem; }
+.lint-action .lint-count {
+    font-size: 0.75rem;
+    color: var(--text-body);
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+}
 .lint-action .suggest { font-size:0.82rem; color:#444; }
 
 /* Scrollbar styling (WebKit) */
@@ -854,8 +862,13 @@ dialog h3 { margin-top: 0; }
     padding: 1rem;
     padding-bottom: 1.75rem;
     outline: none;
-    caret-color: var(--primary);
+    caret-color: #00e0ff;
     tab-size: 2;
+    transition: background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.code-panel.is-editable .code-shell textarea {
+    caret-color: transparent;
 }
 
 .code-shell.read-only textarea {
@@ -865,8 +878,28 @@ dialog h3 { margin-top: 0; }
 }
 
 .code-shell textarea:focus-visible {
-    outline: 2px solid rgba(0, 90, 156, 0.35);
-    outline-offset: -2px;
+    outline: none;
+    box-shadow: inset 0 0 0 3px rgba(0, 224, 255, 0.75), 0 0 0 2px rgba(0, 224, 255, 0.35);
+    background-color: rgba(0, 224, 255, 0.08);
+}
+
+.custom-caret {
+    position: absolute;
+    width: 3px;
+    background: #00e0ff;
+    border-radius: 2px;
+    pointer-events: none;
+    opacity: 0;
+    animation: caretBlink 1s steps(1) infinite;
+}
+
+.custom-caret.is-visible {
+    opacity: 1;
+}
+
+@keyframes caretBlink {
+    0%, 50% { opacity: 1; }
+    50.01%, 100% { opacity: 0; }
 }
 
 
