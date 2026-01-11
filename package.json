@@ -7,8 +7,8 @@
     "test:jsdom": "node tests/ui.test.js",
     "svgo": "svgo -c svgo.config.mjs -f ./svg -o ./svg",
     "svg:lint": "svglint svg/*.svg",
-    "axe": "axe --tags wcag2a,wcag2aa --exit 1 index.html",
-    "pa11y": "pa11y --standard WCAG2AA --threshold 0 index.html",
+    "axe": "axe --tags wcag2a,wcag2aa --exit file://$(pwd)/index.html",
+    "pa11y": "pa11y --standard WCAG2AA --threshold 0 file://$(pwd)/index.html",
     "qa": "npm run svg:lint && npm run axe && npm run pa11y"
   },
   "devDependencies": {
