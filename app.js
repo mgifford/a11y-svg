@@ -2093,7 +2093,6 @@ const App = () => {
                         h('div', { class: 'color-list' }, graphicColors.map((colorInfo, idx) => {
                             const c = colorInfo.hex;
                             const isText = false;
-                            const isOverridden = !!darkModeColors[c];
                             const normalizedColor = normalizeHex(c);
                             const isHighlighted = hoveredHex && normalizedColor && hoveredHex === normalizedColor;
                         
@@ -2102,10 +2101,14 @@ const App = () => {
                             const darkRatio = getContrastRatio(c, bgDark);
                             const lightLevel = getWCAGLevel(lightRatio, false, false);
                             const darkLevel = getWCAGLevel(darkRatio, false, false);
+                            const darkModeColor = darkModeColors[c] || c;
+                            const darkRatioDark = getContrastRatio(darkModeColor, bgDark);
+                            const darkLevelDark = getWCAGLevel(darkRatioDark, false, false);
                         
                             return h('div', { 
                                 key: `graphic-${idx}`,
                                 class: `color-item${isHighlighted ? ' is-highlighted' : ''}`,
+                                style: 'flex-wrap: wrap;',
                                 onMouseEnter: () => setHoveredColor(c),
                                 onMouseLeave: () => setHoveredColor(null),
                                 onFocusCapture: () => setHoveredColor(c),
@@ -2115,54 +2118,84 @@ const App = () => {
                                     }
                                 }
                             }, [
-                             h('div', { 
-                                 style: `width:16px; height:16px; background:${c}; border:1px solid #ccc; flex-shrink:0; border-radius: 2px;`,
-                                 title: `${c} (graphic)`
-                             }),
-                             h('span', { style: 'font-size: 0.65rem; color: #666; font-weight: 400;' }, '(G)'),
-                            h('input', { 
-                                   type: 'color', 
-                                   style: 'width:24px; height:24px; padding:0; border:1px solid #ccc; background:none; cursor: pointer;',
-                                   title: 'Edit color using color picker',
-                                   value: getSafeColorPickerValue(c, '#ffffff'),
-                                   onInput: (e) => {
-                                       const oldColor = c;
-                                       const newColor = e.target.value;
-                                       const newColors = colors.map(ci => ci.hex === oldColor ? { ...ci, hex: newColor } : ci);
-                                       setColors(newColors);
-                                   }
-                            }),
-                            h('input', {
-                                   type: 'text',
-                                   style: 'width: 150px; padding: 0.25rem; font-family: monospace; font-size: 0.75rem; border: 1px solid var(--border);',
-                                   placeholder: 'hex, rgb(), hsl(), named color',
-                                   value: c,
-                                   onInput: (e) => {
-                                       const oldColor = c;
-                                       const newColor = e.target.value;
-                                       const newColors = colors.map(ci => ci.hex === oldColor ? { ...ci, hex: newColor } : ci);
-                                       setColors(newColors);
-                                   }
-                            }),
-                            h('input', { 
-                                   type: 'color', 
-                                   style: 'width:24px; height:24px; padding:0; border:1px solid #ccc; background:none; cursor: pointer;',
-                                   title: 'Dark mode color override',
-                                   value: getSafeColorPickerValue(darkModeColors[c] || c, getSafeColorPickerValue(c, '#ffffff')),
-                                   onInput: (e) => setDarkModeColors({ ...darkModeColors, [c]: e.target.value })
-                            }),
-                             h('div', { style: 'margin-left:auto; display:flex; gap:2px; align-items:center;' }, [
+                             // Light | Color | Dark preview row
+                             h('div', { style: 'display: flex; gap: 0.25rem; align-items: center; width: 100%;' }, [
                                 h('div', { 
-                                    class: `contrast-badge ${lightLevel === 'Fail' ? 'fail' : lightLevel === 'AAA' ? 'aaa' : 'aa'}`,
-                                    title: `Light: ${lightRatio.toFixed(2)}:1 (need 3:1 for graphics)`
-                                }, 
-                                lightRatio.toFixed(1)),
+                                    style: `width:20px; height:20px; background:${bgLight}; border:1px solid #999; border-radius: 2px;`,
+                                    title: `Light background: ${bgLight}`
+                                }),
                                 h('div', { 
-                                    class: `contrast-badge ${darkLevel === 'Fail' ? 'fail' : darkLevel === 'AAA' ? 'aaa' : 'aa'}`,
-                                    title: `Dark: ${darkRatio.toFixed(2)}:1 (need 3:1 for graphics)`
-                                }, 
-                                darkRatio.toFixed(1))
-                            ])
+                                    style: `width:24px; height:24px; background:${c}; border:2px solid #333; border-radius: 2px; cursor: pointer;`,
+                                    title: `${c} (graphic) - click to edit`,
+                                    onClick: () => {
+                                        const picker = document.querySelector(`input[value="${getSafeColorPickerValue(c, '#ffffff')}"][type="color"]`);
+                                        if (picker) picker.click();
+                                    }
+                                }),
+                                h('div', { 
+                                    style: `width:20px; height:20px; background:${bgDark}; border:1px solid #999; border-radius: 2px;`,
+                                    title: `Dark background: ${bgDark}`
+                                }),
+                                h('span', { style: 'font-size: 0.65rem; color: #666; margin-left: auto;' }, '(G)'),
+                             ]),
+                             // Color inputs row
+                             h('div', { style: 'display: flex; gap: 0.25rem; align-items: center; width: 100%;' }, [
+                                h('input', { 
+                                       type: 'color', 
+                                       style: 'width:24px; height:24px; padding:0; border:1px solid #ccc; background:none; cursor: pointer;',
+                                       title: 'Light mode color',
+                                       value: getSafeColorPickerValue(c, '#ffffff'),
+                                       onInput: (e) => {
+                                           const oldColor = c;
+                                           const newColor = e.target.value;
+                                           const newColors = colors.map(ci => ci.hex === oldColor ? { ...ci, hex: newColor } : ci);
+                                           setColors(newColors);
+                                       }
+                                }),
+                                h('input', {
+                                       type: 'text',
+                                       style: 'flex: 1; min-width: 100px; padding: 0.25rem; font-family: monospace; font-size: 0.75rem; border: 1px solid var(--border);',
+                                       placeholder: 'light color',
+                                       value: c,
+                                       onInput: (e) => {
+                                           const oldColor = c;
+                                           const newColor = e.target.value;
+                                           const newColors = colors.map(ci => ci.hex === oldColor ? { ...ci, hex: newColor } : ci);
+                                           setColors(newColors);
+                                       }
+                                }),
+                                h('div', { style: 'margin-left:auto; display:flex; gap:2px; align-items:center;' }, [
+                                    h('div', { 
+                                        class: `contrast-badge ${lightLevel === 'Fail' ? 'fail' : lightLevel === 'AAA' ? 'aaa' : 'aa'}`,
+                                        title: `Light: ${lightRatio.toFixed(2)}:1 (need 3:1 for graphics)`
+                                    }, 
+                                    lightRatio.toFixed(1))
+                                ])
+                             ]),
+                             // Dark mode color row (only show if different from light)
+                             h('div', { style: 'display: flex; gap: 0.25rem; align-items: center; width: 100%; border-top: 1px solid var(--border); padding-top: 0.25rem; margin-top: 0.25rem;' }, [
+                                h('input', { 
+                                       type: 'color', 
+                                       style: 'width:24px; height:24px; padding:0; border:1px solid #ccc; background:none; cursor: pointer;',
+                                       title: 'Dark mode color override',
+                                       value: getSafeColorPickerValue(darkModeColor, getSafeColorPickerValue(c, '#ffffff')),
+                                       onInput: (e) => setDarkModeColors({ ...darkModeColors, [c]: e.target.value })
+                                }),
+                                h('input', {
+                                       type: 'text',
+                                       style: 'flex: 1; min-width: 100px; padding: 0.25rem; font-family: monospace; font-size: 0.75rem; border: 1px solid var(--border);',
+                                       placeholder: 'dark color',
+                                       value: darkModeColor,
+                                       onInput: (e) => setDarkModeColors({ ...darkModeColors, [c]: e.target.value })
+                                }),
+                                h('div', { style: 'margin-left:auto; display:flex; gap:2px; align-items:center;' }, [
+                                    h('div', { 
+                                        class: `contrast-badge ${darkLevelDark === 'Fail' ? 'fail' : darkLevelDark === 'AAA' ? 'aaa' : 'aa'}`,
+                                        title: `Dark: ${darkRatioDark.toFixed(2)}:1 (need 3:1 for graphics)`
+                                    }, 
+                                    darkRatioDark.toFixed(1))
+                                ])
+                             ])
                         ]);
                     }))
                     ]);
