@@ -289,26 +289,69 @@ const hslToRgb = ({ h, s, l }) => {
     };
 };
 
-const suggestAccessibleColor = (hex, bgLight, bgDark, isText, contrastMode) => {
-    const targetRatio = contrastMode === 'apca'
-        ? (isText ? 75 : 60)
-        : (isText ? 4.5 : 3);
-
-    const startRgb = hexToRgb(hex);
-    const startHsl = rgbToHsl(startRgb);
-    const maxSteps = 30;
-
-    const meetsContrast = (candidate) => {
-        if (contrastMode === 'apca') {
-            const lightLc = Math.abs(getAPCAContrast(candidate, bgLight));
-            const darkLc = Math.abs(getAPCAContrast(candidate, bgDark));
-            return Math.min(lightLc, darkLc) >= targetRatio;
+// Auto-fix color to meet WCAG contrast threshold by adjusting lightness
+const autoFixContrast = (fgHex, bgHex, targetRatio) => {
+    const bgRgb = hexToRgb(bgHex);
+    const bgL = getLuminance(bgRgb);
+    
+    // Calculate target foreground luminance
+    // ratio = (lighter + 0.05) / (darker + 0.05)
+    // We need to solve for fg luminance that gives us targetRatio
+    let targetFgL;
+    if (bgL > 0.5) {
+        // Light background - make text darker
+        targetFgL = (bgL + 0.05) / targetRatio - 0.05;
+    } else {
+        // Dark background - make text lighter
+        targetFgL = (bgL + 0.05) * targetRatio - 0.05;
+    }
+    
+    // Clamp to valid range
+    targetFgL = Math.max(0, Math.min(1, targetFgL));
+    
+    // Convert target luminance to approximate RGB
+    // Use grayscale for simplicity (keep hue from original)
+    const fgHsl = rgbToHsl(hexToRgb(fgHex));
+    
+    // Binary search for lightness that achieves target luminance
+    let minL = 0;
+    let maxL = 100;
+    let bestL = fgHsl.l;
+    let bestRatio = 0;
+    
+    for (let i = 0; i < 20; i++) {
+        const testL = Math.round((minL + maxL) / 2);
+        const testRgb = hslToRgb({ h: fgHsl.h, s: fgHsl.s, l: testL });
+        const testHex = rgbToHex(testRgb);
+        const ratio = getContrastRatio(testHex, bgHex);
+        
+        if (Math.abs(ratio - targetRatio) < 0.1) {
+            return testHex;
         }
-        const ratioLight = getContrastRatio(candidate, bgLight);
-        const ratioDark = getContrastRatio(candidate, bgDark);
-        return Math.min(ratioLight, ratioDark) >= targetRatio;
-    };
-
+        
+        if (ratio > bestRatio) {
+            bestRatio = ratio;
+            bestL = testL;
+        }
+        
+        if (ratio < targetRatio) {
+            // Need more contrast
+            if (bgL > 0.5) {
+                maxL = testL - 1; // Darker
+            } else {
+                minL = testL + 1; // Lighter
+            }
+        } else {
+            // Too much contrast, can back off
+            if (bgL > 0.5) {
+                minL = testL + 1; // Lighter
+            } else {
+                maxL = testL - 1; // Darker
+            }
+        }
+    }
+    
+    return rgbToHex(hslToRgb({ h: fgHsl.h, s: fgHsl.s, l: bestL }));
 };
 
 const getAPCALevel = (contrast) => {
@@ -2185,10 +2228,34 @@ const App = () => {
                                 }),
                                 h('div', { 
                                     style: `width:24px; height:24px; background:${c}; border:2px solid #333; border-radius: 2px; cursor: pointer;`,
-                                    title: `${c} (text${isLarge ? ', large' : ''}) - click to edit`,
+                                    title: `${c} (text${isLarge ? ', large' : ''}) - click to set BOTH light & dark modes`,
                                     onClick: () => {
-                                        const picker = document.querySelector(`input[value="${getSafeColorPickerValue(c, '#000000')}"][type="color"]`);
-                                        if (picker) picker.click();
+                                        // Create a temporary color input to pick color
+                                        const tempInput = document.createElement('input');
+                                        tempInput.type = 'color';
+                                        tempInput.value = getSafeColorPickerValue(c, '#000000');
+                                        tempInput.style.position = 'absolute';
+                                        tempInput.style.opacity = '0';
+                                        document.body.appendChild(tempInput);
+                                        tempInput.click();
+                                        tempInput.onchange = () => {
+                                            const newColor = tempInput.value;
+                                            const colorIndex = colors.indexOf(colorInfo);
+                                            if (colorIndex !== -1) {
+                                                const oldColor = colors[colorIndex].hex;
+                                                const newColors = [...colors];
+                                                newColors[colorIndex] = { ...newColors[colorIndex], hex: newColor };
+                                                setColors(newColors);
+                                                // Set dark mode to same color (unified mode)
+                                                const newDarkModeColors = { ...darkModeColors };
+                                                newDarkModeColors[newColor] = newColor;
+                                                if (oldColor !== newColor && darkModeColors[oldColor]) {
+                                                    delete newDarkModeColors[oldColor];
+                                                }
+                                                setDarkModeColors(newDarkModeColors);
+                                            }
+                                            document.body.removeChild(tempInput);
+                                        };
                                     }
                                 }),
                                 h('div', { 
@@ -2249,7 +2316,25 @@ const App = () => {
                                 h('div', { style: 'margin-left:auto; display:flex; gap:2px; align-items:center;' }, [
                                     h('div', { 
                                         class: `contrast-badge ${lightLevel === 'Fail' ? 'fail' : lightLevel === 'AAA' ? 'aaa' : 'aa'}`,
-                                        title: `${c} on ${bgLight}: W ${lightRatio.toFixed(2)}:1 (need ${isLarge ? '3:1' : '4.5:1'})`
+                                        title: `${c} on ${bgLight}: W ${lightRatio.toFixed(2)}:1 (need ${isLarge ? '3:1' : '4.5:1'})${lightLevel === 'Fail' ? ' - Click to auto-fix!' : ''}`,
+                                        style: lightLevel === 'Fail' ? 'cursor: pointer;' : '',
+                                        onClick: lightLevel === 'Fail' ? () => {
+                                            const targetRatio = isLarge ? 3 : 4.5;
+                                            const fixed = autoFixContrast(c, bgLight, targetRatio);
+                                            const colorIndex = colors.indexOf(colorInfo);
+                                            if (colorIndex !== -1) {
+                                                const newColors = [...colors];
+                                                newColors[colorIndex] = { ...newColors[colorIndex], hex: fixed };
+                                                setColors(newColors);
+                                                // Preserve dark mode override
+                                                if (darkModeColors[c]) {
+                                                    const newDarkModeColors = { ...darkModeColors };
+                                                    newDarkModeColors[fixed] = newDarkModeColors[c];
+                                                    delete newDarkModeColors[c];
+                                                    setDarkModeColors(newDarkModeColors);
+                                                }
+                                            }
+                                        } : undefined
                                     }, `W:${lightRatio.toFixed(1)}`),
                                     h('div', { 
                                         class: `contrast-badge ${lightLcLevel === 'Fail' ? 'fail' : lightLcLevel === 'AAA' ? 'aaa' : 'aa'}`,
@@ -2289,7 +2374,17 @@ const App = () => {
                                 h('div', { style: 'margin-left:auto; display:flex; gap:2px; align-items:center;' }, [
                                     h('div', { 
                                         class: `contrast-badge ${darkLevel === 'Fail' ? 'fail' : darkLevel === 'AAA' ? 'aaa' : 'aa'}`,
-                                        title: `${darkModeColor} on ${bgDark}: W ${darkRatio.toFixed(2)}:1 (need ${isLarge ? '3:1' : '4.5:1'})`
+                                        title: `${darkModeColor} on ${bgDark}: W ${darkRatio.toFixed(2)}:1 (need ${isLarge ? '3:1' : '4.5:1'})${darkLevel === 'Fail' ? ' - Click to auto-fix!' : ''}`,
+                                        style: darkLevel === 'Fail' ? 'cursor: pointer;' : '',
+                                        onClick: darkLevel === 'Fail' ? () => {
+                                            const targetRatio = isLarge ? 3 : 4.5;
+                                            const fixed = autoFixContrast(darkModeColor, bgDark, targetRatio);
+                                            const colorIndex = colors.indexOf(colorInfo);
+                                            if (colorIndex !== -1) {
+                                                const currentColor = colors[colorIndex].hex;
+                                                setDarkModeColors({ ...darkModeColors, [currentColor]: fixed });
+                                            }
+                                        } : undefined
                                     }, `W:${darkRatio.toFixed(1)}`),
                                     h('div', { 
                                         class: `contrast-badge ${darkLcLevel === 'Fail' ? 'fail' : darkLcLevel === 'AAA' ? 'aaa' : 'aa'}`,
@@ -2346,10 +2441,34 @@ const App = () => {
                                 }),
                                 h('div', { 
                                     style: `width:24px; height:24px; background:${c}; border:2px solid #333; border-radius: 2px; cursor: pointer;`,
-                                    title: `${c} (graphic) - click to edit`,
+                                    title: `${c} (graphic) - click to set BOTH light & dark modes`,
                                     onClick: () => {
-                                        const picker = document.querySelector(`input[value="${getSafeColorPickerValue(c, '#ffffff')}"][type="color"]`);
-                                        if (picker) picker.click();
+                                        // Create a temporary color input to pick color
+                                        const tempInput = document.createElement('input');
+                                        tempInput.type = 'color';
+                                        tempInput.value = getSafeColorPickerValue(c, '#ffffff');
+                                        tempInput.style.position = 'absolute';
+                                        tempInput.style.opacity = '0';
+                                        document.body.appendChild(tempInput);
+                                        tempInput.click();
+                                        tempInput.onchange = () => {
+                                            const newColor = tempInput.value;
+                                            const colorIndex = colors.indexOf(colorInfo);
+                                            if (colorIndex !== -1) {
+                                                const oldColor = colors[colorIndex].hex;
+                                                const newColors = [...colors];
+                                                newColors[colorIndex] = { ...newColors[colorIndex], hex: newColor };
+                                                setColors(newColors);
+                                                // Set dark mode to same color (unified mode)
+                                                const newDarkModeColors = { ...darkModeColors };
+                                                newDarkModeColors[newColor] = newColor;
+                                                if (oldColor !== newColor && darkModeColors[oldColor]) {
+                                                    delete newDarkModeColors[oldColor];
+                                                }
+                                                setDarkModeColors(newDarkModeColors);
+                                            }
+                                            document.body.removeChild(tempInput);
+                                        };
                                     }
                                 }),
                                 h('div', { 
@@ -2410,7 +2529,24 @@ const App = () => {
                                 h('div', { style: 'margin-left:auto; display:flex; gap:2px; align-items:center;' }, [
                                     h('div', { 
                                         class: `contrast-badge ${lightLevel === 'Fail' ? 'fail' : lightLevel === 'AAA' ? 'aaa' : 'aa'}`,
-                                        title: `${c} on ${bgLight}: ${lightRatio.toFixed(2)}:1 (need 3:1)`
+                                        title: `${c} on ${bgLight}: ${lightRatio.toFixed(2)}:1 (need 3:1)${lightLevel === 'Fail' ? ' - Click to auto-fix!' : ''}`,
+                                        style: lightLevel === 'Fail' ? 'cursor: pointer;' : '',
+                                        onClick: lightLevel === 'Fail' ? () => {
+                                            const fixed = autoFixContrast(c, bgLight, 3.0);
+                                            const colorIndex = colors.indexOf(colorInfo);
+                                            if (colorIndex !== -1) {
+                                                const newColors = [...colors];
+                                                newColors[colorIndex] = { ...newColors[colorIndex], hex: fixed };
+                                                setColors(newColors);
+                                                // Preserve dark mode override
+                                                if (darkModeColors[c]) {
+                                                    const newDarkModeColors = { ...darkModeColors };
+                                                    newDarkModeColors[fixed] = newDarkModeColors[c];
+                                                    delete newDarkModeColors[c];
+                                                    setDarkModeColors(newDarkModeColors);
+                                                }
+                                            }
+                                        } : undefined
                                     }, 
                                     lightRatio.toFixed(1))
                                 ])
@@ -2447,7 +2583,16 @@ const App = () => {
                                 h('div', { style: 'margin-left:auto; display:flex; gap:2px; align-items:center;' }, [
                                     h('div', { 
                                         class: `contrast-badge ${darkLevelDark === 'Fail' ? 'fail' : darkLevelDark === 'AAA' ? 'aaa' : 'aa'}`,
-                                        title: `${darkModeColor} on ${bgDark}: ${darkRatioDark.toFixed(2)}:1 (need 3:1)`
+                                        title: `${darkModeColor} on ${bgDark}: ${darkRatioDark.toFixed(2)}:1 (need 3:1)${darkLevelDark === 'Fail' ? ' - Click to auto-fix!' : ''}`,
+                                        style: darkLevelDark === 'Fail' ? 'cursor: pointer;' : '',
+                                        onClick: darkLevelDark === 'Fail' ? () => {
+                                            const fixed = autoFixContrast(darkModeColor, bgDark, 3.0);
+                                            const colorIndex = colors.indexOf(colorInfo);
+                                            if (colorIndex !== -1) {
+                                                const currentColor = colors[colorIndex].hex;
+                                                setDarkModeColors({ ...darkModeColors, [currentColor]: fixed });
+                                            }
+                                        } : undefined
                                     }, 
                                     darkRatioDark.toFixed(1))
                                 ])
