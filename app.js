@@ -1932,9 +1932,9 @@ const App = () => {
                 ]);
             })(),
 
-            // 1. Test Backgrounds
+            // 1. Colors with background controls
             h('div', { class: 'sidebar-section' }, [
-                h('span', { class: 'sidebar-label' }, '1. Test Backgrounds'),
+                h('span', { class: 'sidebar-label' }, `1. Colors${colors.length > 0 ? ` (${colors.length})` : ''}`),"
                 h('div', { style: 'margin-top: 0.5rem;' }, [
                     h('div', { style: 'display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem;' }, [
                         h('label', { style: 'font-size: 0.85rem; min-width: 60px;' }, 'Light:'),
@@ -1973,10 +1973,6 @@ const App = () => {
                 ])
             ]),
 
-            // 2. Colors & Contrast
-            colors.length > 0 && h('div', { class: 'sidebar-section' }, [
-                h('span', { class: 'sidebar-label' }, `2. Colors & Contrast (${colors.length})`),
-                
                 // Contrast Mode Selector
                 h('div', { style: 'margin-bottom: 0.5rem; display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;' }, [
                     h('label', { class: 'radio-item', style: 'margin: 0;' }, [
@@ -2040,10 +2036,32 @@ const App = () => {
                             h('input', { 
                                    type: 'color', 
                                    style: 'width:20px; height:20px; padding:0; border:none; background:none; cursor: pointer;',
-                                   title: 'Dark mode color override',
-                                   value: darkModeColors[c] || c,
-                                   onInput: (e) => setDarkModeColors({ ...darkModeColors, [c]: e.target.value })
+                                   title: 'Edit light mode color',
+                                   value: c,
+                                   onInput: (e) => {
+                                       const oldColor = c;
+                                       const newColor = e.target.value;
+                                       const newColors = colors.map(ci => ci.hex === oldColor ? { ...ci, hex: newColor } : ci);
+                                       setColors(newColors);
+                                   }
                             }),
+                            h('input', {
+                                   type: 'text',
+                                   style: 'width: 100px; padding: 0.2rem; font-family: monospace; font-size: 0.7rem; border: 1px solid var(--border);',
+                                   placeholder: '#000000',
+                                   value: c,
+                                   onInput: (e) => {
+                                       const oldColor = c;
+                                       const newColor = e.target.value;
+                                       if (newColor.trim()) {
+                                           const newColors = colors.map(ci => ci.hex === oldColor ? { ...ci, hex: newColor } : ci);
+                                           setColors(newColors);
+                                       }
+                                   }
+                            }),
+                            h('input', { 
+                                   type: 'color', 
+                                   style: 'width:20px; height:20px; padding:0; border:none; background:none; cursor: pointer;',
                             (lightLevel === 'Fail' || darkLevel === 'Fail' || (contrastMode === 'apca' && (Math.abs(getAPCAContrast(c, bgLight)) < 75 || Math.abs(getAPCAContrast(c, bgDark)) < 75))) && h('button', {
                                 class: 'small secondary',
                                 style: 'margin-left:6px;',
@@ -2168,8 +2186,32 @@ const App = () => {
                             h('input', { 
                                    type: 'color', 
                                    style: 'width:20px; height:20px; padding:0; border:none; background:none; cursor: pointer;',
-                                   title: 'Dark mode color override',
-                                   value: darkModeColors[c] || c,
+                                   title: 'Edit light mode color',
+                                   value: c,
+                                   onInput: (e) => {
+                                       const oldColor = c;
+                                       const newColor = e.target.value;
+                                       const newColors = colors.map(ci => ci.hex === oldColor ? { ...ci, hex: newColor } : ci);
+                                       setColors(newColors);
+                                   }
+                            }),
+                            h('input', {
+                                   type: 'text',
+                                   style: 'width: 100px; padding: 0.2rem; font-family: monospace; font-size: 0.7rem; border: 1px solid var(--border);',
+                                   placeholder: '#ffffff',
+                                   value: c,
+                                   onInput: (e) => {
+                                       const oldColor = c;
+                                       const newColor = e.target.value;
+                                       if (newColor.trim()) {
+                                           const newColors = colors.map(ci => ci.hex === oldColor ? { ...ci, hex: newColor } : ci);
+                                           setColors(newColors);
+                                       }
+                                   }
+                            }),
+                            h('input', { 
+                                   type: 'color', 
+                                   style: 'width:20px; height:20px; padding:0; border:none; background:none; cursor: pointer;',
                                    onInput: (e) => setDarkModeColors({ ...darkModeColors, [c]: e.target.value })
                             }),
                             h('button', {
@@ -2272,7 +2314,7 @@ const App = () => {
                 // Light
                 h('div', { class: 'preview-pane' }, [
                     h('div', { class: 'preview-header' }, `Light Mode • ${activeTabMeta.label}`),
-                    h('div', { class: 'preview-viewport preview-light' }, [
+                    h('div', { class: 'preview-viewport preview-light', style: `background-color: ${bgLight} !important;` }, [
                          h('div', { 
                              key: `light-${previewLightHtml.length}`,
                              style: 'width:100%; height:100%; display:flex; align-items:center; justify-content:center;',
@@ -2283,7 +2325,7 @@ const App = () => {
                 // Dark
                 h('div', { class: 'preview-pane' }, [
                     h('div', { class: 'preview-header' }, `Dark Mode • ${activeTabMeta.label}`),
-                     h('div', { class: 'preview-viewport preview-dark' }, [
+                     h('div', { class: 'preview-viewport preview-dark', style: `background-color: ${bgDark} !important;` }, [
                          h('div', { 
                              key: `dark-${previewDarkHtml.length}`,
                              style: 'width:100%; height:100%; display:flex; align-items:center; justify-content:center;',
