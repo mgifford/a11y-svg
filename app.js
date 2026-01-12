@@ -1,3 +1,44 @@
+// Suggests a color with good contrast for both light and dark backgrounds
+function suggestDualContrastColor(bgLight, bgDark, isText = true, isLarge = false) {
+    // Example: return black or white depending on which has better contrast for both backgrounds
+    const candidates = ['#000000', '#ffffff'];
+    let best = candidates[0];
+    let bestScore = 0;
+    candidates.forEach(color => {
+        let score = 0;
+        // Use your existing getContrastRatio and getWCAGLevel functions
+        const lightRatio = getContrastRatio(color, bgLight);
+        const darkRatio = getContrastRatio(color, bgDark);
+        const lightLevel = getWCAGLevel(lightRatio, isText, isLarge);
+        const darkLevel = getWCAGLevel(darkRatio, isText, isLarge);
+        if (lightLevel === 'AAA') score += 2;
+        else if (lightLevel === 'AA') score += 1;
+        if (darkLevel === 'AAA') score += 2;
+        else if (darkLevel === 'AA') score += 1;
+        if (score > bestScore) {
+            bestScore = score;
+            best = color;
+        }
+    });
+    return best;
+}
+// Returns true if the SVG text element is considered large for WCAG contrast
+function isLargeText(el) {
+    if (!el || !el.tagName) return false;
+    if (!isTextElement(el)) return false;
+    const fontSize = parseFloat(el.getAttribute('font-size') || '');
+    const fontWeight = (el.getAttribute('font-weight') || '').toLowerCase();
+    // WCAG: large text is ≥ 24px normal or ≥ 18.66px bold
+    if (fontSize >= 24) return true;
+    if (fontSize >= 18.66 && (fontWeight === 'bold' || parseInt(fontWeight) >= 700)) return true;
+    return false;
+}
+// Returns true if the SVG element is a text element
+function isTextElement(el) {
+    if (!el || !el.tagName) return false;
+    const tag = el.tagName.toLowerCase();
+    return tag === 'text' || tag === 'tspan' || tag === 'textpath' || tag === 'altglyph' || tag === 'altglyphdef' || tag === 'altglyphitem';
+}
 /*
  * A11y-SVG-Studio
  * Copyright (C) 2026 Mike Gifford and contributors
@@ -455,8 +496,18 @@ const App = () => {
             metaIsDirtyRef.current = true;
             const nextMeta = { ...meta, [field]: value };
             setMeta(nextMeta);
-            const hasTitle = String(nextMeta.title || '').trim().length > 0;
-            setIntent(hasTitle ? 'informational' : 'decorative');
+            // Instantly sync changes to SVG and preview
+            const updatedMeta = { ...meta, [field]: value };
+            setMeta(updatedMeta);
+            const hasTitle = String(updatedMeta.title || '').trim().length > 0;
+            const nextIntent = hasTitle ? 'informational' : 'decorative';
+            setIntent(nextIntent);
+            skipNextAutoOptimizeRef.current = true;
+            handleOptimize(
+                latestSvgRef.current || svgInput || '',
+                { intent: nextIntent, meta: updatedMeta }
+            );
+            metaIsDirtyRef.current = false;
         };
 
         const triggerFilePicker = () => {
@@ -1366,7 +1417,7 @@ const App = () => {
         setBeautifiedCode(code);
         setSvgInput(code);
         setPreviewBeautified(buildLightDarkPreview(code));
-        // Keep meta in sync if user edits SVG code directly
+        // Only update meta from SVG if user has NOT edited sidebar fields
         if (!metaIsDirtyRef.current) {
             const parsedMeta = extractMetaFromSvg(code);
             const nextTitle = parsedMeta.title || '';
@@ -1953,28 +2004,7 @@ const App = () => {
                     looksLikeFilename(meta.title) && h('p', { class: 'meta-hint warning' }, 'Title looks like a filename. Use human-readable words.'),
                     looksLikeFilename(meta.desc) && h('p', { class: 'meta-hint warning' }, 'Description looks like a filename. Use a sentence.'),
                     (!meta.title || !meta.desc) && h('p', { class: 'meta-hint' }, 'If this image conveys meaning, add a title and description so screen readers announce it.'),
-                    h('div', { style: 'margin-top:0.5rem;' }, [
-                        h('button', { 
-                            class: 'small', 
-                            onClick: () => { 
-                                const hasTitle = String(meta.title || '').trim().length > 0; 
-                                const nextIntent = hasTitle ? 'informational' : 'decorative';
-                                const overrideMeta = nextIntent === 'informational'
-                                    ? { ...meta }
-                                    : { title: '', desc: '' };
-                                skipNextAutoOptimizeRef.current = true;
-                                setIntent(nextIntent); 
-                                metaIsDirtyRef.current = true;
-                                handleOptimize(
-                                    latestSvgRef.current || svgInput || '',
-                                    { intent: nextIntent, meta: overrideMeta }
-                                ); 
-                                setA11yStatus('Accessibility meta saved'); 
-                                setTimeout(() => setA11yStatus(''), 1000); 
-                            },
-                            title: 'Save accessibility title/description into the SVG'
-                        }, 'Save')
-                    ])
+                    // ...no Save button, instant sync
                 ]);
             })(),
 
