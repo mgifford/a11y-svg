@@ -145,6 +145,19 @@ const normalizeHex = (hex) => {
     return null;
 };
 
+// Check if a value is a valid hex color for type="color" input
+const isValidHexForColorInput = (hex) => {
+    if (!hex) return false;
+    const normalized = normalizeHex(hex);
+    return normalized !== null;
+};
+
+// Get a valid hex value for color picker, falling back to a default
+const getSafeColorPickerValue = (colorValue, fallback = '#000000') => {
+    const normalized = normalizeHex(colorValue);
+    return normalized || fallback;
+};
+
 const normalizeColorToken = (token) => {
     if (!token) return null;
     const trimmed = token.trim().toLowerCase();
@@ -1999,7 +2012,7 @@ const App = () => {
                             const darkLcLevel = getAPCALevel(darkLc);
                         
                             return h('div', { 
-                                key: `text-${c}-${idx}`,
+                                key: `text-${idx}`,
                                 class: `color-item${isHighlighted ? ' is-highlighted' : ''}`,
                                 onMouseEnter: () => setHoveredColor(c),
                                 onMouseLeave: () => setHoveredColor(null),
@@ -2014,13 +2027,12 @@ const App = () => {
                                  style: `width:16px; height:16px; background:${c}; border:1px solid #ccc; flex-shrink:0; border-radius: 2px;`,
                                  title: `${c} (text${isLarge ? ', large' : ''})`
                              }),
-                             h('code', { style: 'font-size:0.75rem;' }, c),
                              h('span', { style: 'font-size: 0.65rem; color: #666; font-weight: 700;' }, `(T${isLarge ? 'L' : ''})`),
                             h('input', { 
                                    type: 'color', 
                                    style: 'width:24px; height:24px; padding:0; border:1px solid #ccc; background:none; cursor: pointer;',
                                    title: 'Edit color using color picker',
-                                   value: normalizeHex(c) || '#000000',
+                                   value: getSafeColorPickerValue(c, '#000000'),
                                    onInput: (e) => {
                                        const oldColor = c;
                                        const newColor = e.target.value;
@@ -2035,18 +2047,16 @@ const App = () => {
                                    value: c,
                                    onInput: (e) => {
                                        const oldColor = c;
-                                       const newColor = e.target.value.trim();
-                                       if (newColor) {
-                                           const newColors = colors.map(ci => ci.hex === oldColor ? { ...ci, hex: newColor } : ci);
-                                           setColors(newColors);
-                                       }
+                                       const newColor = e.target.value;
+                                       const newColors = colors.map(ci => ci.hex === oldColor ? { ...ci, hex: newColor } : ci);
+                                       setColors(newColors);
                                    }
                             }),
                             h('input', { 
                                    type: 'color', 
-                                   style: 'width:20px; height:20px; padding:0; border:none; background:none; cursor: pointer;',
+                                   style: 'width:24px; height:24px; padding:0; border:1px solid #ccc; background:none; cursor: pointer;',
                                    title: 'Dark mode color override',
-                                   value: darkModeColors[c] || c,
+                                   value: getSafeColorPickerValue(darkModeColors[c] || c, getSafeColorPickerValue(c, '#000000')),
                                    onInput: (e) => setDarkModeColors({ ...darkModeColors, [c]: e.target.value })
                             }),
                             (lightLevel === 'Fail' || darkLevel === 'Fail' || (contrastMode === 'apca' && (Math.abs(getAPCAContrast(c, bgLight)) < 75 || Math.abs(getAPCAContrast(c, bgDark)) < 75))) && h('button', {
@@ -2155,7 +2165,7 @@ const App = () => {
                             const darkLevel = getWCAGLevel(darkRatio, false, false);
                         
                             return h('div', { 
-                                key: `graphic-${c}-${idx}`,
+                                key: `graphic-${idx}`,
                                 class: `color-item${isHighlighted ? ' is-highlighted' : ''}`,
                                 onMouseEnter: () => setHoveredColor(c),
                                 onMouseLeave: () => setHoveredColor(null),
@@ -2170,13 +2180,12 @@ const App = () => {
                                  style: `width:16px; height:16px; background:${c}; border:1px solid #ccc; flex-shrink:0; border-radius: 2px;`,
                                  title: `${c} (graphic)`
                              }),
-                             h('code', { style: 'font-size:0.75rem;' }, c),
                              h('span', { style: 'font-size: 0.65rem; color: #666; font-weight: 400;' }, '(G)'),
                             h('input', { 
                                    type: 'color', 
                                    style: 'width:24px; height:24px; padding:0; border:1px solid #ccc; background:none; cursor: pointer;',
                                    title: 'Edit color using color picker',
-                                   value: normalizeHex(c) || '#ffffff',
+                                   value: getSafeColorPickerValue(c, '#ffffff'),
                                    onInput: (e) => {
                                        const oldColor = c;
                                        const newColor = e.target.value;
@@ -2191,16 +2200,16 @@ const App = () => {
                                    value: c,
                                    onInput: (e) => {
                                        const oldColor = c;
-                                       const newColor = e.target.value.trim();
-                                       if (newColor) {
-                                           const newColors = colors.map(ci => ci.hex === oldColor ? { ...ci, hex: newColor } : ci);
-                                           setColors(newColors);
-                                       }
+                                       const newColor = e.target.value;
+                                       const newColors = colors.map(ci => ci.hex === oldColor ? { ...ci, hex: newColor } : ci);
+                                       setColors(newColors);
                                    }
                             }),
                             h('input', { 
                                    type: 'color', 
-                                   style: 'width:20px; height:20px; padding:0; border:none; background:none; cursor: pointer;',
+                                   style: 'width:24px; height:24px; padding:0; border:1px solid #ccc; background:none; cursor: pointer;',
+                                   title: 'Dark mode color override',
+                                   value: getSafeColorPickerValue(darkModeColors[c] || c, getSafeColorPickerValue(c, '#ffffff')),
                                    onInput: (e) => setDarkModeColors({ ...darkModeColors, [c]: e.target.value })
                             }),
                             h('button', {
