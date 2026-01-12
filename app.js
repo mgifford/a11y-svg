@@ -105,6 +105,20 @@ function beautifySvg(svg) {
     }
 }
 
+const optimizeSvg = (code, options = {}) => {
+    try {
+        if (typeof window !== 'undefined' && window.SVGO && typeof window.SVGO.optimize === 'function') {
+            return window.SVGO.optimize(code, options);
+        }
+    } catch (err) {
+        console.warn('SVGO global lookup failed, falling back to bundled optimize()', err);
+    }
+    if (typeof optimize === 'function') {
+        return optimize(code, options);
+    }
+    return { data: code };
+};
+
 function getWCAGLevel(ratio, isText = false, isLarge = false) {
     if (isText) {
         const aaThreshold = isLarge ? 3 : 4.5;
@@ -365,11 +379,6 @@ const App = () => {
         const [tempIntent, setTempIntent] = useState('decorative');
         const [meta, setMeta] = useState({ title: '', desc: '' });
         const metaIsDirtyRef = useRef(false);
-        const [options, setOptions] = useState({
-            useCurrentColor: false,
-            injectDarkMode: false,
-            useCssVars: false
-        });
         const [colors, setColors] = useState([]);
         const [darkModeColors, setDarkModeColors] = useState({});
 
@@ -395,8 +404,6 @@ const App = () => {
         const [contrastMode, setContrastMode] = useState('wcag'); // 'wcag' or 'apca'
         const [bgLight, setBgLight] = useState('#ffffff');
         const [bgDark, setBgDark] = useState('#121212');
-        const [showTextAsNonText, setShowTextAsNonText] = useState(false);
-        const [filterTextOnly, setFilterTextOnly] = useState(false);
         const [previewSplit, setPreviewSplit] = useState(50); // 50/50 split percentage
         const previewContainerRef = useRef(null);
         const isResizingRef = useRef(false);
@@ -1269,11 +1276,6 @@ const App = () => {
                             el.setAttribute(attr, elementOverrides[id][attr]);
                         } else if (darkModeColors[lowerVal]) {
                             el.setAttribute(attr, darkModeColors[lowerVal]);
-                        } else if (options.useCurrentColor) {
-                            el.setAttribute(attr, 'currentColor');
-                        } else if (options.useCssVars) {
-                            const varName = `--svg-color-${lowerVal.replace('#', '')}`;
-                            colorMap.set(lowerVal, varName);
                         }
                     }
                 });
@@ -1281,81 +1283,6 @@ const App = () => {
 
             // Save element map state for UI reference
             setElementMap(tempElementMap);
-
-            // Inject CSS Variables style block if enabled
-            if (options.useCssVars && colorMap.size > 0) {
-                const varsStyleId = 'css-vars-style';
-                let varsStyleEl = svgEl.querySelector(`#${varsStyleId}`);
-                if (!varsStyleEl) {
-                    varsStyleEl = doc.createElementNS('http://www.w3.org/2000/svg', 'style');
-                    varsStyleEl.id = varsStyleId;
-                    svgEl.prepend(varsStyleEl);
-                }
-                
-                // Define CSS variables
-                let varsCss = ':root {\n';
-                colorMap.forEach((varName, hex) => {
-                    varsCss += `  ${varName}: ${hex};\n`;
-                });
-                varsCss += '}\n';
-                
-                // Apply variables to elements
-                allEls.forEach(el => {
-                    ['fill', 'stroke'].forEach(attr => {
-                        const val = el.getAttribute(attr);
-                        if (val && val.startsWith('#')) {
-                            const varName = colorMap.get(val.toLowerCase());
-                            if (varName) {
-                                el.setAttribute(attr, `var(${varName})`);
-                            }
-                        }
-                    });
-                });
-                
-                varsStyleEl.textContent = varsCss;
-            }
-
-            // Inject Dark Mode Style Block
-            if (options.injectDarkMode) {
-                    const styleId = 'dark-mode-style';
-                    let styleEl = svgEl.querySelector(`#${styleId}`);
-                    if (!styleEl) {
-                        styleEl = doc.createElementNS('http://www.w3.org/2000/svg', 'style');
-                        styleEl.id = styleId;
-                        svgEl.append(styleEl);
-                    }
-                    
-                    let cssContent = `@media (prefers-color-scheme: dark) { \n`;
-                    const definedColors = Object.keys(darkModeColors);
-                    
-                    if (definedColors.length > 0) {
-                        // This is a naive implementation: it assumes we want to map ALL instances of a color
-                        // To do this robustly, we'd need to add classes to elements matching the color.
-                        // For this 'single-file' scope, we will try to target by attribute selector or class
-                        
-                        // Strategy: Add classes to elements with specific colors
-                        allEls.forEach(el => {
-                            ['fill', 'stroke'].forEach(attr => {
-                                const val = el.getAttribute(attr);
-                                if(val && darkModeColors[val.toLowerCase()]) {
-                                    const colorKey = val.toLowerCase().replace('#', '');
-                                    el.classList.add(`${attr}-${colorKey}`);
-                                }
-                            });
-                        });
-
-                        // Write CSS rules (separate fill and stroke)
-                        Object.entries(darkModeColors).forEach(([src, target]) => {
-                            if(target) {
-                                const colorKey = src.toLowerCase().replace('#', '');
-                                cssContent += `  .fill-${colorKey} { fill: ${target}; }\n`;
-                                cssContent += `  .stroke-${colorKey} { stroke: ${target}; }\n`;
-                            }
-                        });
-                    }
-                    cssContent += `}`;
-                    styleEl.textContent = cssContent;
-            }
 
             const serializer = new XMLSerializer();
             const enrichedCode = serializer.serializeToString(svgEl);
@@ -1623,7 +1550,7 @@ const App = () => {
             return;
         }
         handleOptimize(latestSvgRef.current);
-    }, [intent, meta, options, darkModeColors, elementOverrides]);
+    }, [intent, meta, darkModeColors, elementOverrides]);
 
     useEffect(() => {
         const styleId = 'hovered-color-style';
@@ -1665,21 +1592,18 @@ const App = () => {
         }
         const savedSplit = parseFloat(localStorage.getItem('previewSplit'));
         if (!Number.isNaN(savedSplit)) setPreviewSplit(savedSplit);
-        const savedFilter = localStorage.getItem('filterTextOnly');
-        if (savedFilter !== null) setFilterTextOnly(savedFilter === 'true');
     }, []);
 
-    // Persist overrides, split and filter choices
+    // Persist overrides and split choices
     useEffect(() => {
         try {
             localStorage.setItem('darkModeColors', JSON.stringify(darkModeColors || {}));
             localStorage.setItem('elementOverrides', JSON.stringify(elementOverrides || {}));
             localStorage.setItem('previewSplit', String(previewSplit));
-            localStorage.setItem('filterTextOnly', filterTextOnly ? 'true' : 'false');
         } catch (e) {
             // ignore storage errors
         }
-    }, [darkModeColors, previewSplit, filterTextOnly]);
+    }, [darkModeColors, previewSplit]);
 
     useEffect(() => {
         try {
@@ -2008,30 +1932,50 @@ const App = () => {
                 ]);
             })(),
 
-            // 1. Theming
+            // 1. Test Backgrounds
             h('div', { class: 'sidebar-section' }, [
-                h('span', { class: 'sidebar-label' }, '1. Theming'),
-                h('label', { class: 'radio-item' }, [
-                    h('input', { 
-                        type: 'checkbox', 
-                        checked: options.useCurrentColor,
-                        onChange: (e) => setOptions({ ...options, useCurrentColor: e.target.checked })
-                    }),
-                    ' Use currentColor'
-                ]),
-                h('label', { class: 'radio-item' }, [
-                    h('input', { 
-                        type: 'checkbox', 
-                        checked: options.injectDarkMode,
-                        onChange: (e) => setOptions({ ...options, injectDarkMode: e.target.checked })
-                    }),
-                    ' Inject Media Query'
+                h('span', { class: 'sidebar-label' }, '1. Test Backgrounds'),
+                h('div', { style: 'margin-top: 0.5rem;' }, [
+                    h('div', { style: 'display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem;' }, [
+                        h('label', { style: 'font-size: 0.85rem; min-width: 60px;' }, 'Light:'),
+                        h('input', { 
+                            type: 'color',
+                            value: bgLight,
+                            onChange: (e) => setBgLight(e.target.value),
+                            title: 'Light mode background color',
+                            style: 'width: 32px; height: 32px; padding: 0; border: 1px solid #ccc; cursor: pointer;'
+                        }),
+                        h('input', {
+                            type: 'text',
+                            value: bgLight,
+                            onChange: (e) => setBgLight(e.target.value),
+                            placeholder: '#ffffff',
+                            style: 'flex: 1; padding: 0.25rem; font-family: monospace; font-size: 0.8rem; border: 1px solid var(--border);'
+                        })
+                    ]),
+                    h('div', { style: 'display: flex; gap: 0.5rem; align-items: center;' }, [
+                        h('label', { style: 'font-size: 0.85rem; min-width: 60px;' }, 'Dark:'),
+                        h('input', { 
+                            type: 'color',
+                            value: bgDark,
+                            onChange: (e) => setBgDark(e.target.value),
+                            title: 'Dark mode background color',
+                            style: 'width: 32px; height: 32px; padding: 0; border: 1px solid #ccc; cursor: pointer;'
+                        }),
+                        h('input', {
+                            type: 'text',
+                            value: bgDark,
+                            onChange: (e) => setBgDark(e.target.value),
+                            placeholder: '#121212',
+                            style: 'flex: 1; padding: 0.25rem; font-family: monospace; font-size: 0.8rem; border: 1px solid var(--border);'
+                        })
+                    ])
                 ])
             ]),
 
             // 2. Colors & Contrast
             colors.length > 0 && h('div', { class: 'sidebar-section' }, [
-                h('span', { class: 'sidebar-label' }, `2. Colors (${colors.length})`),
+                h('span', { class: 'sidebar-label' }, `2. Colors & Contrast (${colors.length})`),
                 
                 // Contrast Mode Selector
                 h('div', { style: 'margin-bottom: 0.5rem; display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;' }, [
@@ -2045,201 +1989,227 @@ const App = () => {
                     ])
                 ]),
                 
-                // Text Evaluation Option
-                h('label', { class: 'radio-item', style: 'font-size: 0.8rem;' }, [
-                    h('input', { 
-                        type: 'checkbox',
-                        checked: showTextAsNonText,
-                        onChange: (e) => setShowTextAsNonText(e.target.checked),
-                        style: 'margin: 0;'
-                    }),
-                    ' Override: Treat text as graphics'
-                ]),
-                h('label', { class: 'radio-item', style: 'font-size: 0.8rem;' }, [
-                    h('input', { type: 'checkbox', checked: filterTextOnly, onChange: (e) => setFilterTextOnly(e.target.checked), style: 'margin:0;' }),
-                    ' Show only text colors'
-                ]),
-                
-                // Background Color Configuration
-                h('div', { style: 'margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border);' }, [
-                    h('div', { style: 'font-size: 0.75rem; font-weight: bold; margin-bottom: 0.3rem;' }, 'Test Backgrounds'),
-                    
-                    h('div', { style: 'display: flex; gap: 0.3rem; align-items: center; margin-bottom: 0.3rem;' }, [
-                        h('label', { style: 'font-size: 0.75rem;' }, 'Light:'),
-                        h('input', { 
-                            type: 'color',
-                            value: bgLight,
-                            onChange: (e) => setBgLight(e.target.value),
-                            title: 'Light mode background color',
-                            style: 'width: 24px; height: 24px; padding: 0; border: 1px solid #ccc; cursor: pointer;'
-                        }),
-                        h('code', { style: 'font-size: 0.65rem;' }, bgLight)
-                    ]),
-                    
-                    h('div', { style: 'display: flex; gap: 0.3rem; align-items: center;' }, [
-                        h('label', { style: 'font-size: 0.75rem;' }, 'Dark:'),
-                        h('input', { 
-                            type: 'color',
-                            value: bgDark,
-                            onChange: (e) => setBgDark(e.target.value),
-                            title: 'Dark mode background color',
-                            style: 'width: 24px; height: 24px; padding: 0; border: 1px solid #ccc; cursor: pointer;'
-                        }),
-                        h('code', { style: 'font-size: 0.65rem;' }, bgDark)
-                    ])
-                ]),
-                
+                // Text Colors (show WCAG + APCA for both modes)
                 (() => {
+                    const textColors = colors.filter(ci => ci.isText);
+                    if (textColors.length === 0) return null;
+                    
                     const hoveredHex = normalizeHex(hoveredColor);
-                    return h('div', { class: 'color-list' }, colors.filter(ci => !filterTextOnly || ci.isText).map((colorInfo, idx) => {
-                    const c = colorInfo.hex;
-                    const isText = colorInfo.isText && !showTextAsNonText;
-                    const isLarge = colorInfo.isLarge;
-                    const isOverridden = !!darkModeColors[c];
-                        const normalizedColor = normalizeHex(c);
-                        const isHighlighted = hoveredHex && normalizedColor && hoveredHex === normalizedColor;
-                    
-                    let lightRatio, darkRatio, lightLc, darkLc, lightLevel, darkLevel;
-                    
-                    if (contrastMode === 'wcag') {
-                        lightRatio = getContrastRatio(c, bgLight);
-                        darkRatio = getContrastRatio(c, bgDark);
-                        lightLevel = getWCAGLevel(lightRatio, isText, isLarge);
-                        darkLevel = getWCAGLevel(darkRatio, isText, isLarge);
-                    } else {
-                        lightLc = getAPCAContrast(c, bgLight);
-                        darkLc = getAPCAContrast(c, bgDark);
-                        lightLevel = getAPCALevel(lightLc);
-                        darkLevel = getAPCALevel(darkLc);
-                    }
-                    
-                        return h('div', { 
-                            key: `${c}-${idx}`,
-                            class: `color-item${isHighlighted ? ' is-highlighted' : ''}`,
-                            onMouseEnter: () => setHoveredColor(c),
-                            onMouseLeave: () => setHoveredColor(null),
-                            onFocusCapture: () => setHoveredColor(c),
-                            onBlurCapture: (e) => {
-                                if (!e.currentTarget.contains(e.relatedTarget)) {
-                                    setHoveredColor(null);
-                                }
+                    return h('div', { style: 'margin-top: 1rem;' }, [
+                        h('div', { style: 'font-weight: bold; font-size: 0.9rem; margin-bottom: 0.5rem;' }, `Text Colors (${textColors.length})`),
+                        h('div', { class: 'color-list' }, textColors.map((colorInfo, idx) => {
+                            const c = colorInfo.hex;
+                            const isText = true;
+                            const isLarge = colorInfo.isLarge;
+                            const isOverridden = !!darkModeColors[c];
+                            const normalizedColor = normalizeHex(c);
+                            const isHighlighted = hoveredHex && normalizedColor && hoveredHex === normalizedColor;
+                        
+                            let lightRatio, darkRatio, lightLc, darkLc, lightLevel, darkLevel;
+                        
+                            if (contrastMode === 'wcag') {
+                                lightRatio = getContrastRatio(c, bgLight);
+                                darkRatio = getContrastRatio(c, bgDark);
+                                lightLevel = getWCAGLevel(lightRatio, isText, isLarge);
+                                darkLevel = getWCAGLevel(darkRatio, isText, isLarge);
+                            } else {
+                                lightLc = getAPCAContrast(c, bgLight);
+                                darkLc = getAPCAContrast(c, bgDark);
+                                lightLevel = getAPCALevel(lightLc);
+                                darkLevel = getAPCALevel(darkLc);
                             }
-                        }, [
-                         h('div', { 
-                             style: `width:16px; height:16px; background:${c}; border:1px solid #ccc; flex-shrink:0; border-radius: 2px;`,
-                             title: `${c} (${colorInfo.isText ? 'text' : 'graphic'}${colorInfo.isLarge ? ', large' : ''})`
-                         }),
-                         h('code', { style: 'font-size:0.75rem;' }, c),
-                         h('span', { style: `font-size: 0.65rem; color: #666; font-weight: ${colorInfo.isText ? 700 : 400};` }, `(${colorInfo.isText ? 'T' : 'G'}${colorInfo.isLarge ? 'L' : ''})`),
-                        options.injectDarkMode && h('input', { 
-                               type: 'color', 
-                               style: 'width:20px; height:20px; padding:0; border:none; background:none; cursor: pointer;',
-                               title: 'Dark mode color override',
-                               value: darkModeColors[c] || '',
-                               onInput: (e) => setDarkModeColors({ ...darkModeColors, [c]: e.target.value })
-                        }),
-                        // A11y button: only show if this color is used by text and fails the WCAG text threshold (4.5:1)
-                        (colorInfo.isText && (
-                            (contrastMode === 'wcag' && (lightLevel === 'Fail' || darkLevel === 'Fail')) ||
-                            (contrastMode === 'apca' && (Math.abs(getAPCAContrast(c, bgLight)) < 75 || Math.abs(getAPCAContrast(c, bgDark)) < 75))
-                        )) && h('button', {
-                            class: 'small secondary',
-                            style: 'margin-left:6px;',
-                            title: 'Apply per-element accessible fix for problematic uses of this color',
-                            onClick: () => {
-                                // Find elements using this color and apply elementOverrides per-element
-                                // Build a copy and apply suggestions only to elements that fail contrast in light or dark
-                                const newElem = { ...elementOverrides };
-                                Object.entries(elementMap).forEach(([id, info]) => {
-                                    // Determine which attr (fill/stroke) matches this base color
-                                    ['fill', 'stroke'].forEach(attr => {
-                                        const val = info[attr];
-                                        if (!val) return;
-
-                                        // Resolve value: if currentColor placeholder, evaluate per preview
-                                        const matchesBaseColor = (v) => {
-                                            try { return v.toLowerCase() === c.toLowerCase(); } catch(e){ return false; }
-                                        };
-
-                                        // If this element uses currentColor, check both light and dark resolved colors
-                                        if (typeof val === 'object' && val.current) {
-                                            const testLight = val.light;
-                                            const testDark = val.dark;
-                                            const lightFail = (contrastMode === 'wcag') ? getWCAGLevel(getContrastRatio(testLight, bgLight), info.isText, info.isLarge) === 'Fail' : getAPCALevel(getAPCAContrast(testLight, bgLight)) === 'Fail';
-                                            const darkFail = (contrastMode === 'wcag') ? getWCAGLevel(getContrastRatio(testDark, bgDark), info.isText, info.isLarge) === 'Fail' : getAPCALevel(getAPCAContrast(testDark, bgDark)) === 'Fail';
-                                            if (lightFail || darkFail) {
-                                                const suggested = suggestAccessibleColor(lightFail ? testLight : testDark, bgLight, bgDark, info.isText, contrastMode);
-                                                if (!newElem[id]) newElem[id] = {};
-                                                newElem[id][attr] = suggested;
-                                            }
-                                        } else {
-                                            const sval = val.toLowerCase();
-                                            if (sval === c.toLowerCase()) {
-                                                const testColor = sval;
-                                                const lightFail = (contrastMode === 'wcag') ? getWCAGLevel(getContrastRatio(testColor, bgLight), info.isText, info.isLarge) === 'Fail' : getAPCALevel(getAPCAContrast(testColor, bgLight)) === 'Fail';
-                                                const darkFail = (contrastMode === 'wcag') ? getWCAGLevel(getContrastRatio(testColor, bgDark), info.isText, info.isLarge) === 'Fail' : getAPCALevel(getAPCAContrast(testColor, bgDark)) === 'Fail';
+                        
+                            return h('div', { 
+                                key: `text-${c}-${idx}`,
+                                class: `color-item${isHighlighted ? ' is-highlighted' : ''}`,
+                                onMouseEnter: () => setHoveredColor(c),
+                                onMouseLeave: () => setHoveredColor(null),
+                                onFocusCapture: () => setHoveredColor(c),
+                                onBlurCapture: (e) => {
+                                    if (!e.currentTarget.contains(e.relatedTarget)) {
+                                        setHoveredColor(null);
+                                    }
+                                }
+                            }, [
+                             h('div', { 
+                                 style: `width:16px; height:16px; background:${c}; border:1px solid #ccc; flex-shrink:0; border-radius: 2px;`,
+                                 title: `${c} (text${isLarge ? ', large' : ''})`
+                             }),
+                             h('code', { style: 'font-size:0.75rem;' }, c),
+                             h('span', { style: 'font-size: 0.65rem; color: #666; font-weight: 700;' }, `(T${isLarge ? 'L' : ''})`),
+                            h('input', { 
+                                   type: 'color', 
+                                   style: 'width:20px; height:20px; padding:0; border:none; background:none; cursor: pointer;',
+                                   title: 'Dark mode color override',
+                                   value: darkModeColors[c] || c,
+                                   onInput: (e) => setDarkModeColors({ ...darkModeColors, [c]: e.target.value })
+                            }),
+                            (lightLevel === 'Fail' || darkLevel === 'Fail' || (contrastMode === 'apca' && (Math.abs(getAPCAContrast(c, bgLight)) < 75 || Math.abs(getAPCAContrast(c, bgDark)) < 75))) && h('button', {
+                                class: 'small secondary',
+                                style: 'margin-left:6px;',
+                                title: 'Apply per-element accessible fix for problematic uses of this color',
+                                onClick: () => {
+                                    const newElem = { ...elementOverrides };
+                                    Object.entries(elementMap).forEach(([id, info]) => {
+                                        ['fill', 'stroke'].forEach(attr => {
+                                            const val = info[attr];
+                                            if (!val) return;
+                                            if (typeof val === 'object' && val.current) {
+                                                const testLight = val.light;
+                                                const testDark = val.dark;
+                                                const lightFail = (contrastMode === 'wcag') ? getWCAGLevel(getContrastRatio(testLight, bgLight), info.isText, info.isLarge) === 'Fail' : getAPCALevel(getAPCAContrast(testLight, bgLight)) === 'Fail';
+                                                const darkFail = (contrastMode === 'wcag') ? getWCAGLevel(getContrastRatio(testDark, bgDark), info.isText, info.isLarge) === 'Fail' : getAPCALevel(getAPCAContrast(testDark, bgDark)) === 'Fail';
                                                 if (lightFail || darkFail) {
-                                                    const suggested = suggestAccessibleColor(testColor, lightFail ? bgLight : bgDark, darkFail ? bgDark : bgLight, info.isText, contrastMode);
+                                                    const suggested = suggestAccessibleColor(lightFail ? testLight : testDark, bgLight, bgDark, info.isText, contrastMode);
                                                     if (!newElem[id]) newElem[id] = {};
                                                     newElem[id][attr] = suggested;
                                                 }
+                                            } else {
+                                                const sval = val.toLowerCase();
+                                                if (sval === c.toLowerCase()) {
+                                                    const testColor = sval;
+                                                    const lightFail = (contrastMode === 'wcag') ? getWCAGLevel(getContrastRatio(testColor, bgLight), info.isText, info.isLarge) === 'Fail' : getAPCALevel(getAPCAContrast(testColor, bgLight)) === 'Fail';
+                                                    const darkFail = (contrastMode === 'wcag') ? getWCAGLevel(getContrastRatio(testColor, bgDark), info.isText, info.isLarge) === 'Fail' : getAPCALevel(getAPCAContrast(testColor, bgDark)) === 'Fail';
+                                                    if (lightFail || darkFail) {
+                                                        const suggested = suggestAccessibleColor(testColor, lightFail ? bgLight : bgDark, darkFail ? bgDark : bgLight, info.isText, contrastMode);
+                                                        if (!newElem[id]) newElem[id] = {};
+                                                        newElem[id][attr] = suggested;
+                                                    }
+                                                }
                                             }
-                                        }
+                                        });
                                     });
-                                });
-                                setElementOverrides(newElem);
-                                setA11yStatus('Applied per-element suggestions');
-                                setTimeout(() => setA11yStatus(''), 1400);
-                            }
-                        }, 'A11y'),
-
-                        // Quick Toggle: apply/revert a color-level override (keeps older behavior)
-                        h('button', {
-                            class: 'small',
-                            style: 'margin-left:6px;',
-                            title: 'Quick toggle color-level override (fallback if needed)',
-                            onClick: () => {
-                                if (isOverridden) {
-                                    const copy = { ...darkModeColors };
-                                    delete copy[c];
-                                    setDarkModeColors(copy);
-                                    setA11yStatus(`Reverted override for ${c}`);
-                                    setTimeout(() => setA11yStatus(''), 900);
-                                } else {
-                                    const suggested = suggestAccessibleColor(c, bgLight, bgDark, isText, contrastMode);
-                                    const fallback = suggested && suggested !== c ? suggested : (isText ? '#000000' : '#ffffff');
-                                    setPrevOverrides({ ...prevOverrides, [c]: null });
-                                    setDarkModeColors({ ...darkModeColors, [c]: fallback });
-                                    setA11yStatus(`Applied quick override ${fallback} for ${c}`);
-                                    setTimeout(() => setA11yStatus(''), 1200);
+                                    setElementOverrides(newElem);
+                                    setA11yStatus('Applied per-element suggestions');
+                                    setTimeout(() => setA11yStatus(''), 1400);
                                 }
-                            }
-                        }, isOverridden ? 'Revert' : 'Toggle Override'),
-                         h('div', { style: 'margin-left:auto; display:flex; gap:2px; align-items:center;' }, [
-                            // Light Mode
-                            h('div', { 
-                                class: `contrast-badge ${lightLevel === 'Fail' ? 'fail' : lightLevel === 'AAA' ? 'aaa' : 'aa'}`,
-                                title: contrastMode === 'wcag' 
-                                    ? `Light: ${lightRatio.toFixed(2)}:1 (need ${isText ? isLarge ? '3:1' : '4.5:1' : '3:1'})` 
-                                    : `Light: ${lightLc.toFixed(1)} Lc (need ${isText ? '75+' : '60+'} Lc)`
-                            }, 
-                            contrastMode === 'wcag' ? lightRatio.toFixed(1) : lightLc.toFixed(0)),
-                            
-                            // Dark Mode
-                            h('div', { 
-                                class: `contrast-badge ${darkLevel === 'Fail' ? 'fail' : darkLevel === 'AAA' ? 'aaa' : 'aa'}`,
-                                title: contrastMode === 'wcag'
-                                    ? `Dark: ${darkRatio.toFixed(2)}:1 (need ${isText ? isLarge ? '3:1' : '4.5:1' : '3:1'})`
-                                    : `Dark: ${darkLc.toFixed(1)} Lc (need ${isText ? '75+' : '60+'} Lc)`
-                            }, 
-                            contrastMode === 'wcag' ? darkRatio.toFixed(1) : darkLc.toFixed(0))
-                        ])
+                            }, 'A11y'),
+                            h('button', {
+                                class: 'small',
+                                style: 'margin-left:6px;',
+                                title: 'Quick toggle color-level override (fallback if needed)',
+                                onClick: () => {
+                                    if (isOverridden) {
+                                        const copy = { ...darkModeColors };
+                                        delete copy[c];
+                                        setDarkModeColors(copy);
+                                        setA11yStatus(`Reverted override for ${c}`);
+                                        setTimeout(() => setA11yStatus(''), 900);
+                                    } else {
+                                        const suggested = suggestAccessibleColor(c, bgLight, bgDark, isText, contrastMode);
+                                        const fallback = suggested && suggested !== c ? suggested : '#000000';
+                                        setPrevOverrides({ ...prevOverrides, [c]: null });
+                                        setDarkModeColors({ ...darkModeColors, [c]: fallback });
+                                        setA11yStatus(`Applied quick override ${fallback} for ${c}`);
+                                        setTimeout(() => setA11yStatus(''), 1200);
+                                    }
+                                }
+                            }, isOverridden ? 'Revert' : 'Override'),
+                             h('div', { style: 'margin-left:auto; display:flex; gap:2px; align-items:center;' }, [
+                                h('div', { 
+                                    class: `contrast-badge ${lightLevel === 'Fail' ? 'fail' : lightLevel === 'AAA' ? 'aaa' : 'aa'}`,
+                                    title: contrastMode === 'wcag' 
+                                        ? `Light: ${lightRatio.toFixed(2)}:1 (need ${isLarge ? '3:1' : '4.5:1'})` 
+                                        : `Light: ${lightLc.toFixed(1)} Lc (need 75+ Lc)`
+                                }, 
+                                contrastMode === 'wcag' ? lightRatio.toFixed(1) : lightLc.toFixed(0)),
+                                h('div', { 
+                                    class: `contrast-badge ${darkLevel === 'Fail' ? 'fail' : darkLevel === 'AAA' ? 'aaa' : 'aa'}`,
+                                    title: contrastMode === 'wcag'
+                                        ? `Dark: ${darkRatio.toFixed(2)}:1 (need ${isLarge ? '3:1' : '4.5:1'})`
+                                        : `Dark: ${darkLc.toFixed(1)} Lc (need 75+ Lc)`
+                                }, 
+                                contrastMode === 'wcag' ? darkRatio.toFixed(1) : darkLc.toFixed(0))
+                            ])
+                        ]);
+                    }))
                     ]);
-                }));
+                })(),
+                
+                // Graphic Colors (show WCAG only, no APCA for graphics)
+                (() => {
+                    const graphicColors = colors.filter(ci => !ci.isText);
+                    if (graphicColors.length === 0) return null;
+                    
+                    const hoveredHex = normalizeHex(hoveredColor);
+                    return h('div', { style: 'margin-top: 1rem;' }, [
+                        h('div', { style: 'font-weight: bold; font-size: 0.9rem; margin-bottom: 0.5rem;' }, `Graphic Colors (${graphicColors.length})`),
+                        h('div', { class: 'color-list' }, graphicColors.map((colorInfo, idx) => {
+                            const c = colorInfo.hex;
+                            const isText = false;
+                            const isOverridden = !!darkModeColors[c];
+                            const normalizedColor = normalizeHex(c);
+                            const isHighlighted = hoveredHex && normalizedColor && hoveredHex === normalizedColor;
+                        
+                            // Graphics only use WCAG 3:1 threshold
+                            const lightRatio = getContrastRatio(c, bgLight);
+                            const darkRatio = getContrastRatio(c, bgDark);
+                            const lightLevel = getWCAGLevel(lightRatio, false, false);
+                            const darkLevel = getWCAGLevel(darkRatio, false, false);
+                        
+                            return h('div', { 
+                                key: `graphic-${c}-${idx}`,
+                                class: `color-item${isHighlighted ? ' is-highlighted' : ''}`,
+                                onMouseEnter: () => setHoveredColor(c),
+                                onMouseLeave: () => setHoveredColor(null),
+                                onFocusCapture: () => setHoveredColor(c),
+                                onBlurCapture: (e) => {
+                                    if (!e.currentTarget.contains(e.relatedTarget)) {
+                                        setHoveredColor(null);
+                                    }
+                                }
+                            }, [
+                             h('div', { 
+                                 style: `width:16px; height:16px; background:${c}; border:1px solid #ccc; flex-shrink:0; border-radius: 2px;`,
+                                 title: `${c} (graphic)`
+                             }),
+                             h('code', { style: 'font-size:0.75rem;' }, c),
+                             h('span', { style: 'font-size: 0.65rem; color: #666; font-weight: 400;' }, '(G)'),
+                            h('input', { 
+                                   type: 'color', 
+                                   style: 'width:20px; height:20px; padding:0; border:none; background:none; cursor: pointer;',
+                                   title: 'Dark mode color override',
+                                   value: darkModeColors[c] || c,
+                                   onInput: (e) => setDarkModeColors({ ...darkModeColors, [c]: e.target.value })
+                            }),
+                            h('button', {
+                                class: 'small',
+                                style: 'margin-left:6px;',
+                                title: 'Quick toggle color-level override',
+                                onClick: () => {
+                                    if (isOverridden) {
+                                        const copy = { ...darkModeColors };
+                                        delete copy[c];
+                                        setDarkModeColors(copy);
+                                        setA11yStatus(`Reverted override for ${c}`);
+                                        setTimeout(() => setA11yStatus(''), 900);
+                                    } else {
+                                        const suggested = suggestAccessibleColor(c, bgLight, bgDark, false, 'wcag');
+                                        const fallback = suggested && suggested !== c ? suggested : '#ffffff';
+                                        setPrevOverrides({ ...prevOverrides, [c]: null });
+                                        setDarkModeColors({ ...darkModeColors, [c]: fallback });
+                                        setA11yStatus(`Applied override ${fallback} for ${c}`);
+                                        setTimeout(() => setA11yStatus(''), 1200);
+                                    }
+                                }
+                            }, isOverridden ? 'Revert' : 'Override'),
+                             h('div', { style: 'margin-left:auto; display:flex; gap:2px; align-items:center;' }, [
+                                h('div', { 
+                                    class: `contrast-badge ${lightLevel === 'Fail' ? 'fail' : lightLevel === 'AAA' ? 'aaa' : 'aa'}`,
+                                    title: `Light: ${lightRatio.toFixed(2)}:1 (need 3:1 for graphics)`
+                                }, 
+                                lightRatio.toFixed(1)),
+                                h('div', { 
+                                    class: `contrast-badge ${darkLevel === 'Fail' ? 'fail' : darkLevel === 'AAA' ? 'aaa' : 'aa'}`,
+                                    title: `Dark: ${darkRatio.toFixed(2)}:1 (need 3:1 for graphics)`
+                                }, 
+                                darkRatio.toFixed(1))
+                            ])
+                        ]);
+                    }))
+                    ]);
                 })()
-            ])
-
-            ,
+            ]),
             // 3. Finalize (Accordion)
             h('div', { class: 'accordion', role: 'region', 'aria-expanded': accordionState.finalize ? 'true' : 'false', id: 'finalize-accordion' }, [
                 h('div', { class: 'accordion-header', onClick: (e) => {

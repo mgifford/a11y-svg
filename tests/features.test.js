@@ -116,4 +116,27 @@ describe('Critical Feature Tests', () => {
             assert.ok(appJsContent.includes('previewBeautified'), 'Should have beautified preview state');
         });
     });
+
+    describe('Helper robustness', () => {
+        it('should define a generateId helper for ensureElementId', () => {
+            assert.ok(appJsContent.includes('const ensureElementId'), 'ensureElementId helper should exist');
+            assert.ok(appJsContent.includes('generateId'), 'generateId helper should exist');
+            assert.ok(appJsContent.includes('ensureElementId(') && appJsContent.includes('generateId'),
+                'ensureElementId should rely on generateId');
+        });
+
+        it('should define an optimizeSvg fallback without SVGO', () => {
+            assert.ok(appJsContent.includes('optimizeSvg'), 'optimizeSvg helper should be defined');
+            assert.ok(appJsContent.includes('window.SVGO') || appJsContent.includes('SVGO'), 'optimizeSvg should guard access to global SVGO');
+            assert.ok(appJsContent.includes('return { data: code }'), 'optimizeSvg fallback should return original code');
+        });
+
+        it('should fetch svg/manifest.json when loading samples', () => {
+            assert.ok(appJsContent.includes('fetchRandomSvg'), 'fetchRandomSvg should exist');
+            assert.ok(appJsContent.includes("fetch('svg/manifest.json')"), 'Should fetch svg/manifest.json');
+            assert.ok(appJsContent.includes('svgHistory'), 'Should track sample history');
+            assert.ok(appJsContent.includes('fetch(`svg/${encodeURIComponent(randomFile)}`)') || appJsContent.includes('svg/${encodeURIComponent(randomFile)}'),
+                'Should request encoded sample file paths');
+        });
+    });
 });

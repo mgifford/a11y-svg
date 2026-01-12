@@ -1,0 +1,307 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="520" height="240"
+     viewBox="0 0 520 240"
+     role="img"
+     aria-labelledby="repTitle repDesc"
+     focusable="true"
+     tabindex="0">
+  <title id="repTitle">Accessible SVG representative fixture</title>
+  <desc id="repDesc">
+    A lock icon with a keyhole emphasis that responds to hover and keyboard focus, plus contrast test swatches
+    including three intentionally bad combinations. Designed to work in light, dark, and forced-colors modes.
+  </desc>
+
+  <style>
+    /* ---------------------------
+       Baseline tokens
+       --------------------------- */
+    :root{
+      --ink: currentColor;
+
+      /* Primary surfaces and strokes */
+      --panel: color-mix(in srgb, var(--ink) 10%, transparent);
+      --stroke: color-mix(in srgb, var(--ink) 85%, transparent);
+      --muted: color-mix(in srgb, var(--ink) 55%, transparent);
+
+      /* Lock palette (normal mode) */
+      --lock-body: #2e7d32;     /* green body */
+      --lock-outline: #1b5e20;  /* darker green outline */
+      --keyhole: #111111;       /* keyhole fill */
+
+      /* Focus ring */
+      --focus-ring: #ffeb3b;
+
+      /* Contrast test swatches */
+      --good-bg: #ffffff;
+      --good-fg: #0b57d0;
+
+      /* BAD combos (intentionally) */
+      --bad1-bg: #6cc2ff;  --bad1-fg: #8fe0ff; /* too close */
+      --bad2-bg: #ffd54f;  --bad2-fg: #fff2cc; /* too close */
+      --bad3-bg: #b39ddb;  --bad3-fg: #cfc2ff; /* too close */
+    }
+
+    @media (prefers-color-scheme: dark){
+      :root{
+        --panel: color-mix(in srgb, var(--ink) 18%, transparent);
+        --stroke: color-mix(in srgb, var(--ink) 92%, transparent);
+        --muted: color-mix(in srgb, var(--ink) 65%, transparent);
+
+        /* Brighter lock for dark mode */
+        --lock-body: #81c784;
+        --lock-outline: #a5d6a7;
+        --keyhole: #0b0b0b;
+
+        --focus-ring: #fff59d;
+
+        --good-bg: #101214;
+        --good-fg: #8ab4f8;
+      }
+    }
+
+    /* ---------------------------
+       Forced colors
+       Important: fill/stroke can be overridden by the UA.
+       We provide a deterministic mapping for critical parts.
+       --------------------------- */
+    @media (forced-colors: active){
+      :root{
+        --panel: Canvas;
+        --stroke: CanvasText;
+        --muted: GrayText;
+
+        --lock-body: Canvas;
+        --lock-outline: CanvasText;
+        --keyhole: CanvasText;
+
+        --focus-ring: Highlight;
+
+        /* Swatches become system colors, but remain labeled as Good/Bad */
+        --good-bg: Canvas;   --good-fg: CanvasText;
+        --bad1-bg: Canvas;   --bad1-fg: GrayText;
+        --bad2-bg: Canvas;   --bad2-fg: GrayText;
+        --bad3-bg: Canvas;   --bad3-fg: GrayText;
+      }
+
+      /* Decorative effects should not be relied on in forced-colors */
+      .glowable{ filter: none !important; }
+    }
+
+    /* ---------------------------
+       General layout styling
+       --------------------------- */
+    .frame {
+      fill: none;
+      stroke: var(--stroke);
+      stroke-width: 2;
+      rx: 10; ry: 10;
+    }
+
+    .bg {
+      fill: var(--panel);
+    }
+
+    .label {
+      fill: var(--ink);
+      font: 600 14px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    }
+
+    .small {
+      fill: var(--muted);
+      font: 500 12px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    }
+
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-weight: 600;
+      font-size: 12px;
+      fill: var(--muted);
+    }
+
+    /* Visible focus (browser support varies by embedding context) */
+    svg:focus, svg:focus-visible {
+      outline: 3px solid var(--focus-ring);
+      outline-offset: 6px;
+      border-radius: 12px;
+    }
+
+    /* ---------------------------
+       Lock icon styling
+       --------------------------- */
+    .lock-outline { fill: none; stroke: var(--lock-outline); stroke-width: 3; }
+    .lock-body    { fill: var(--lock-body); stroke: var(--lock-outline); stroke-width: 2; }
+    .keyhole      { fill: var(--keyhole); }
+
+    /* Subtle shine line (non-essential) */
+    .shine { stroke: color-mix(in srgb, #ffffff 55%, transparent); stroke-width: 2; opacity: .35; }
+
+    /* Keyhole emphasis behavior: normal mode uses glow filter */
+    .glowable { filter: url(#glow); opacity: 0; }
+
+    svg:hover  .keyhole-emphasis,
+    svg:focus  .keyhole-emphasis,
+    svg:focus-visible .keyhole-emphasis {
+      opacity: 1;
+    }
+
+    /* Forced-colors emphasis: use stroke ring instead of glow */
+    @media (forced-colors: active){
+      .keyhole-ring {
+        fill: none;
+        stroke: Highlight;
+        stroke-width: 3;
+        opacity: 0;
+      }
+      svg:hover .keyhole-ring,
+      svg:focus .keyhole-ring,
+      svg:focus-visible .keyhole-ring {
+        opacity: 1;
+      }
+    }
+
+    /* Optional: a gentle rotation of the badge group on hover/focus */
+    .badge-spin { transform-box: fill-box; transform-origin: center; }
+    svg:hover .badge-spin,
+    svg:focus .badge-spin,
+    svg:focus-visible .badge-spin {
+      animation: spin 1200ms linear infinite;
+    }
+
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+    @media (prefers-reduced-motion: reduce){
+      svg:hover .badge-spin,
+      svg:focus .badge-spin,
+      svg:focus-visible .badge-spin {
+        animation: none;
+      }
+    }
+
+    /* ---------------------------
+       Contrast swatches
+       --------------------------- */
+    .swatch { rx: 8; ry: 8; stroke: var(--stroke); stroke-width: 1.5; }
+    .good-bg { fill: var(--good-bg); }
+    .good-fg { fill: var(--good-fg); }
+
+    .bad1-bg { fill: var(--bad1-bg); }
+    .bad1-fg { fill: var(--bad1-fg); }
+
+    .bad2-bg { fill: var(--bad2-bg); }
+    .bad2-fg { fill: var(--bad2-fg); }
+
+    .bad3-bg { fill: var(--bad3-bg); }
+    .bad3-fg { fill: var(--bad3-fg); }
+  </style>
+
+  <defs>
+    <!-- Glow filter used only in non-forced-colors modes -->
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="2.5" result="blur"/>
+      <feColorMatrix in="blur" type="matrix"
+        values="1 0 0 0 0
+                0 1 0 0 0.9
+                0 0 1 0 0
+                0 0 0 0.9 0" result="tint"/>
+      <feMerge>
+        <feMergeNode in="tint"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background panel -->
+  <rect x="10" y="10" width="500" height="220" class="bg" rx="12" ry="12"/>
+  <rect x="10" y="10" width="500" height="220" class="frame"/>
+
+  <!-- Header -->
+  <text x="24" y="38" class="label">Representative SVG Fixture</text>
+  <text x="24" y="58" class="small">Hover or focus the SVG to emphasize the keyhole. Includes 3 intentionally bad contrast swatches.</text>
+
+  <!-- Lock group -->
+  <g transform="translate(24 78)">
+    <text x="0" y="0" class="label">Lock (interactive emphasis)</text>
+    <text x="0" y="18" class="mono">Tests: theming · hover/focus · reduced motion · forced-colors</text>
+
+    <!-- Lock drawing -->
+    <g transform="translate(0 30)">
+      <!-- Shackle -->
+      <path d="M58 42
+               C58 18, 92 18, 92 42
+               L92 58
+               L82 58
+               L82 42
+               C82 30, 68 30, 68 42
+               L68 58
+               L58 58 Z"
+            class="lock-body"/>
+
+      <!-- Body -->
+      <rect x="46" y="54" width="58" height="56" rx="10" ry="10" class="lock-body"/>
+
+      <!-- Shine -->
+      <path d="M58 68 L58 98" class="shine"/>
+
+      <!-- Keyhole -->
+      <g>
+        <circle cx="75" cy="82" r="7" class="keyhole"/>
+        <path d="M72.5 85.5
+                 C72.5 91.5, 77.5 91.5, 77.5 85.5
+                 L77.5 102
+                 L72.5 102 Z" class="keyhole"/>
+      </g>
+
+      <!-- Emphasis ring (forced-colors) -->
+      <circle cx="75" cy="84" r="16" class="keyhole-ring"/>
+
+      <!-- Emphasis glow (normal) -->
+      <circle cx="75" cy="84" r="16" class="keyhole-emphasis glowable" fill="transparent" stroke="rgba(0,255,120,0.75)" stroke-width="5"/>
+    </g>
+  </g>
+
+  <!-- Spinning badge demo (small, non-essential) -->
+  <g transform="translate(250 108)">
+    <text x="0" y="0" class="label">Badge (decorative spin)</text>
+    <text x="0" y="18" class="mono">Animation disabled under prefers-reduced-motion</text>
+
+    <g class="badge-spin" transform="translate(60 74)">
+      <circle r="26" fill="none" stroke="var(--stroke)" stroke-width="2"/>
+      <text y="6" text-anchor="middle" class="label">C</text>
+    </g>
+  </g>
+
+  <!-- Contrast test swatches -->
+  <g transform="translate(250 40)">
+    <text x="0" y="0" class="label">Contrast Swatches</text>
+    <text x="0" y="18" class="mono">Good + 3 Bad combinations (intentionally)</text>
+
+    <!-- Good -->
+    <g transform="translate(0 32)">
+      <rect x="0" y="0" width="120" height="44" class="swatch good-bg"/>
+      <text x="10" y="28" class="label good-fg">Good (≥3:1)</text>
+    </g>
+
+    <!-- Bad 1 -->
+    <g transform="translate(130 32)">
+      <rect x="0" y="0" width="120" height="44" class="swatch bad1-bg"/>
+      <text x="10" y="28" class="label bad1-fg">Bad 1</text>
+    </g>
+
+    <!-- Bad 2 -->
+    <g transform="translate(0 84)">
+      <rect x="0" y="0" width="120" height="44" class="swatch bad2-bg"/>
+      <text x="10" y="28" class="label bad2-fg">Bad 2</text>
+    </g>
+
+    <!-- Bad 3 -->
+    <g transform="translate(130 84)">
+      <rect x="0" y="0" width="120" height="44" class="swatch bad3-bg"/>
+      <text x="10" y="28" class="label bad3-fg">Bad 3</text>
+    </g>
+
+    <text x="0" y="154" class="small">
+      Note: Bad swatches are deliberate fixtures for testing detection and false-positive handling.
+    </text>
+  </g>
+</svg>
