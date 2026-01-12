@@ -2059,67 +2059,6 @@ const App = () => {
                                    value: getSafeColorPickerValue(darkModeColors[c] || c, getSafeColorPickerValue(c, '#000000')),
                                    onInput: (e) => setDarkModeColors({ ...darkModeColors, [c]: e.target.value })
                             }),
-                            (lightLevel === 'Fail' || darkLevel === 'Fail' || (contrastMode === 'apca' && (Math.abs(getAPCAContrast(c, bgLight)) < 75 || Math.abs(getAPCAContrast(c, bgDark)) < 75))) && h('button', {
-                                class: 'small secondary',
-                                style: 'margin-left:6px;',
-                                title: 'Apply per-element accessible fix for problematic uses of this color',
-                                onClick: () => {
-                                    const newElem = { ...elementOverrides };
-                                    Object.entries(elementMap).forEach(([id, info]) => {
-                                        ['fill', 'stroke'].forEach(attr => {
-                                            const val = info[attr];
-                                            if (!val) return;
-                                            if (typeof val === 'object' && val.current) {
-                                                const testLight = val.light;
-                                                const testDark = val.dark;
-                                                const lightFail = (contrastMode === 'wcag') ? getWCAGLevel(getContrastRatio(testLight, bgLight), info.isText, info.isLarge) === 'Fail' : getAPCALevel(getAPCAContrast(testLight, bgLight)) === 'Fail';
-                                                const darkFail = (contrastMode === 'wcag') ? getWCAGLevel(getContrastRatio(testDark, bgDark), info.isText, info.isLarge) === 'Fail' : getAPCALevel(getAPCAContrast(testDark, bgDark)) === 'Fail';
-                                                if (lightFail || darkFail) {
-                                                    const suggested = suggestAccessibleColor(lightFail ? testLight : testDark, bgLight, bgDark, info.isText, contrastMode);
-                                                    if (!newElem[id]) newElem[id] = {};
-                                                    newElem[id][attr] = suggested;
-                                                }
-                                            } else {
-                                                const sval = val.toLowerCase();
-                                                if (sval === c.toLowerCase()) {
-                                                    const testColor = sval;
-                                                    const lightFail = (contrastMode === 'wcag') ? getWCAGLevel(getContrastRatio(testColor, bgLight), info.isText, info.isLarge) === 'Fail' : getAPCALevel(getAPCAContrast(testColor, bgLight)) === 'Fail';
-                                                    const darkFail = (contrastMode === 'wcag') ? getWCAGLevel(getContrastRatio(testColor, bgDark), info.isText, info.isLarge) === 'Fail' : getAPCALevel(getAPCAContrast(testColor, bgDark)) === 'Fail';
-                                                    if (lightFail || darkFail) {
-                                                        const suggested = suggestAccessibleColor(testColor, lightFail ? bgLight : bgDark, darkFail ? bgDark : bgLight, info.isText, contrastMode);
-                                                        if (!newElem[id]) newElem[id] = {};
-                                                        newElem[id][attr] = suggested;
-                                                    }
-                                                }
-                                            }
-                                        });
-                                    });
-                                    setElementOverrides(newElem);
-                                    setA11yStatus('Applied per-element suggestions');
-                                    setTimeout(() => setA11yStatus(''), 1400);
-                                }
-                            }, 'A11y'),
-                            h('button', {
-                                class: 'small',
-                                style: 'margin-left:6px;',
-                                title: 'Quick toggle color-level override (fallback if needed)',
-                                onClick: () => {
-                                    if (isOverridden) {
-                                        const copy = { ...darkModeColors };
-                                        delete copy[c];
-                                        setDarkModeColors(copy);
-                                        setA11yStatus(`Reverted override for ${c}`);
-                                        setTimeout(() => setA11yStatus(''), 900);
-                                    } else {
-                                        const suggested = suggestAccessibleColor(c, bgLight, bgDark, isText, contrastMode);
-                                        const fallback = suggested && suggested !== c ? suggested : '#000000';
-                                        setPrevOverrides({ ...prevOverrides, [c]: null });
-                                        setDarkModeColors({ ...darkModeColors, [c]: fallback });
-                                        setA11yStatus(`Applied quick override ${fallback} for ${c}`);
-                                        setTimeout(() => setA11yStatus(''), 1200);
-                                    }
-                                }
-                            }, isOverridden ? 'Revert' : 'Override'),
                              h('div', { style: 'margin-left:auto; display:flex; gap:0.5px; align-items:center; font-size:0.65rem;' }, [
                                 h('div', { 
                                     class: `contrast-badge ${lightLevel === 'Fail' ? 'fail' : lightLevel === 'AAA' ? 'aaa' : 'aa'}`,
@@ -2212,27 +2151,6 @@ const App = () => {
                                    value: getSafeColorPickerValue(darkModeColors[c] || c, getSafeColorPickerValue(c, '#ffffff')),
                                    onInput: (e) => setDarkModeColors({ ...darkModeColors, [c]: e.target.value })
                             }),
-                            h('button', {
-                                class: 'small',
-                                style: 'margin-left:6px;',
-                                title: 'Quick toggle color-level override',
-                                onClick: () => {
-                                    if (isOverridden) {
-                                        const copy = { ...darkModeColors };
-                                        delete copy[c];
-                                        setDarkModeColors(copy);
-                                        setA11yStatus(`Reverted override for ${c}`);
-                                        setTimeout(() => setA11yStatus(''), 900);
-                                    } else {
-                                        const suggested = suggestAccessibleColor(c, bgLight, bgDark, false, 'wcag');
-                                        const fallback = suggested && suggested !== c ? suggested : '#ffffff';
-                                        setPrevOverrides({ ...prevOverrides, [c]: null });
-                                        setDarkModeColors({ ...darkModeColors, [c]: fallback });
-                                        setA11yStatus(`Applied override ${fallback} for ${c}`);
-                                        setTimeout(() => setA11yStatus(''), 1200);
-                                    }
-                                }
-                            }, isOverridden ? 'Revert' : 'Override'),
                              h('div', { style: 'margin-left:auto; display:flex; gap:2px; align-items:center;' }, [
                                 h('div', { 
                                     class: `contrast-badge ${lightLevel === 'Fail' ? 'fail' : lightLevel === 'AAA' ? 'aaa' : 'aa'}`,
