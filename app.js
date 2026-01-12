@@ -1934,7 +1934,7 @@ const App = () => {
 
             // 1. Colors with background controls
             h('div', { class: 'sidebar-section' }, [
-                h('span', { class: 'sidebar-label' }, `1. Colors${colors.length > 0 ? ` (${colors.length})` : ''}`),"
+                h('span', { class: 'sidebar-label' }, `1. Colors${colors.length > 0 ? ` (${colors.length})` : ''}`),
                 h('div', { style: 'margin-top: 0.5rem;' }, [
                     h('div', { style: 'display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem;' }, [
                         h('label', { style: 'font-size: 0.85rem; min-width: 60px;' }, 'Light:'),
@@ -1970,8 +1970,7 @@ const App = () => {
                             style: 'flex: 1; padding: 0.25rem; font-family: monospace; font-size: 0.8rem; border: 1px solid var(--border);'
                         })
                     ])
-                ])
-            ]),
+                ]),
 
                 // Contrast Mode Selector
                 h('div', { style: 'margin-bottom: 0.5rem; display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;' }, [
@@ -2062,6 +2061,10 @@ const App = () => {
                             h('input', { 
                                    type: 'color', 
                                    style: 'width:20px; height:20px; padding:0; border:none; background:none; cursor: pointer;',
+                                   title: 'Dark mode color override',
+                                   value: darkModeColors[c] || c,
+                                   onInput: (e) => setDarkModeColors({ ...darkModeColors, [c]: e.target.value })
+                            }),
                             (lightLevel === 'Fail' || darkLevel === 'Fail' || (contrastMode === 'apca' && (Math.abs(getAPCAContrast(c, bgLight)) < 75 || Math.abs(getAPCAContrast(c, bgDark)) < 75))) && h('button', {
                                 class: 'small secondary',
                                 style: 'margin-left:6px;',
