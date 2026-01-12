@@ -1972,19 +1972,7 @@ const App = () => {
                     ])
                 ]),
 
-                // Contrast Mode Selector
-                h('div', { style: 'margin-bottom: 0.5rem; display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;' }, [
-                    h('label', { class: 'radio-item', style: 'margin: 0;' }, [
-                        h('input', { type: 'radio', name: 'contrast-mode', checked: contrastMode === 'wcag', onChange: () => setContrastMode('wcag'), style: 'margin: 0;' }),
-                        'WCAG'
-                    ]),
-                    h('label', { class: 'radio-item', style: 'margin: 0;' }, [
-                        h('input', { type: 'radio', name: 'contrast-mode', checked: contrastMode === 'apca', onChange: () => setContrastMode('apca'), style: 'margin: 0;' }),
-                        'APCA'
-                    ])
-                ]),
-                
-                // Text Colors (show WCAG + APCA for both modes)
+                // Text Colors (always show both WCAG + APCA)
                 (() => {
                     const textColors = colors.filter(ci => ci.isText);
                     if (textColors.length === 0) return null;
@@ -2000,19 +1988,15 @@ const App = () => {
                             const normalizedColor = normalizeHex(c);
                             const isHighlighted = hoveredHex && normalizedColor && hoveredHex === normalizedColor;
                         
-                            let lightRatio, darkRatio, lightLc, darkLc, lightLevel, darkLevel;
-                        
-                            if (contrastMode === 'wcag') {
-                                lightRatio = getContrastRatio(c, bgLight);
-                                darkRatio = getContrastRatio(c, bgDark);
-                                lightLevel = getWCAGLevel(lightRatio, isText, isLarge);
-                                darkLevel = getWCAGLevel(darkRatio, isText, isLarge);
-                            } else {
-                                lightLc = getAPCAContrast(c, bgLight);
-                                darkLc = getAPCAContrast(c, bgDark);
-                                lightLevel = getAPCALevel(lightLc);
-                                darkLevel = getAPCALevel(darkLc);
-                            }
+                            // Always calculate both WCAG and APCA for text colors
+                            const lightRatio = getContrastRatio(c, bgLight);
+                            const darkRatio = getContrastRatio(c, bgDark);
+                            const lightLevel = getWCAGLevel(lightRatio, isText, isLarge);
+                            const darkLevel = getWCAGLevel(darkRatio, isText, isLarge);
+                            const lightLc = getAPCAContrast(c, bgLight);
+                            const darkLc = getAPCAContrast(c, bgDark);
+                            const lightLcLevel = getAPCALevel(lightLc);
+                            const darkLcLevel = getAPCALevel(darkLc);
                         
                             return h('div', { 
                                 key: `text-${c}-${idx}`,
@@ -2034,9 +2018,9 @@ const App = () => {
                              h('span', { style: 'font-size: 0.65rem; color: #666; font-weight: 700;' }, `(T${isLarge ? 'L' : ''})`),
                             h('input', { 
                                    type: 'color', 
-                                   style: 'width:20px; height:20px; padding:0; border:none; background:none; cursor: pointer;',
-                                   title: 'Edit light mode color',
-                                   value: c,
+                                   style: 'width:24px; height:24px; padding:0; border:1px solid #ccc; background:none; cursor: pointer;',
+                                   title: 'Edit color using color picker',
+                                   value: normalizeHex(c) || '#000000',
                                    onInput: (e) => {
                                        const oldColor = c;
                                        const newColor = e.target.value;
@@ -2046,13 +2030,13 @@ const App = () => {
                             }),
                             h('input', {
                                    type: 'text',
-                                   style: 'width: 100px; padding: 0.2rem; font-family: monospace; font-size: 0.7rem; border: 1px solid var(--border);',
-                                   placeholder: '#000000',
+                                   style: 'width: 150px; padding: 0.25rem; font-family: monospace; font-size: 0.75rem; border: 1px solid var(--border);',
+                                   placeholder: 'hex, rgb(), hsl(), named color',
                                    value: c,
                                    onInput: (e) => {
                                        const oldColor = c;
-                                       const newColor = e.target.value;
-                                       if (newColor.trim()) {
+                                       const newColor = e.target.value.trim();
+                                       if (newColor) {
                                            const newColors = colors.map(ci => ci.hex === oldColor ? { ...ci, hex: newColor } : ci);
                                            setColors(newColors);
                                        }
@@ -2126,22 +2110,24 @@ const App = () => {
                                     }
                                 }
                             }, isOverridden ? 'Revert' : 'Override'),
-                             h('div', { style: 'margin-left:auto; display:flex; gap:2px; align-items:center;' }, [
+                             h('div', { style: 'margin-left:auto; display:flex; gap:0.5px; align-items:center; font-size:0.65rem;' }, [
                                 h('div', { 
                                     class: `contrast-badge ${lightLevel === 'Fail' ? 'fail' : lightLevel === 'AAA' ? 'aaa' : 'aa'}`,
-                                    title: contrastMode === 'wcag' 
-                                        ? `Light: ${lightRatio.toFixed(2)}:1 (need ${isLarge ? '3:1' : '4.5:1'})` 
-                                        : `Light: ${lightLc.toFixed(1)} Lc (need 75+ Lc)`
-                                }, 
-                                contrastMode === 'wcag' ? lightRatio.toFixed(1) : lightLc.toFixed(0)),
+                                    title: `Light WCAG: ${lightRatio.toFixed(2)}:1 (need ${isLarge ? '3:1' : '4.5:1'})`
+                                }, `W:${lightRatio.toFixed(1)}`),
+                                h('div', { 
+                                    class: `contrast-badge ${lightLcLevel === 'Fail' ? 'fail' : lightLcLevel === 'AAA' ? 'aaa' : 'aa'}`,
+                                    title: `Light APCA: ${lightLc.toFixed(1)} Lc (need 75+ Lc)`
+                                }, `A:${lightLc.toFixed(0)}`),
                                 h('div', { 
                                     class: `contrast-badge ${darkLevel === 'Fail' ? 'fail' : darkLevel === 'AAA' ? 'aaa' : 'aa'}`,
-                                    title: contrastMode === 'wcag'
-                                        ? `Dark: ${darkRatio.toFixed(2)}:1 (need ${isLarge ? '3:1' : '4.5:1'})`
-                                        : `Dark: ${darkLc.toFixed(1)} Lc (need 75+ Lc)`
-                                }, 
-                                contrastMode === 'wcag' ? darkRatio.toFixed(1) : darkLc.toFixed(0))
-                            ])
+                                    title: `Dark WCAG: ${darkRatio.toFixed(2)}:1 (need ${isLarge ? '3:1' : '4.5:1'})`
+                                }, `W:${darkRatio.toFixed(1)}`),
+                                h('div', { 
+                                    class: `contrast-badge ${darkLcLevel === 'Fail' ? 'fail' : darkLcLevel === 'AAA' ? 'aaa' : 'aa'}`,
+                                    title: `Dark APCA: ${darkLc.toFixed(1)} Lc (need 75+ Lc)`
+                                }, `A:${darkLc.toFixed(0)}`)
+                             ])
                         ]);
                     }))
                     ]);
@@ -2188,9 +2174,9 @@ const App = () => {
                              h('span', { style: 'font-size: 0.65rem; color: #666; font-weight: 400;' }, '(G)'),
                             h('input', { 
                                    type: 'color', 
-                                   style: 'width:20px; height:20px; padding:0; border:none; background:none; cursor: pointer;',
-                                   title: 'Edit light mode color',
-                                   value: c,
+                                   style: 'width:24px; height:24px; padding:0; border:1px solid #ccc; background:none; cursor: pointer;',
+                                   title: 'Edit color using color picker',
+                                   value: normalizeHex(c) || '#ffffff',
                                    onInput: (e) => {
                                        const oldColor = c;
                                        const newColor = e.target.value;
@@ -2200,13 +2186,13 @@ const App = () => {
                             }),
                             h('input', {
                                    type: 'text',
-                                   style: 'width: 100px; padding: 0.2rem; font-family: monospace; font-size: 0.7rem; border: 1px solid var(--border);',
-                                   placeholder: '#ffffff',
+                                   style: 'width: 150px; padding: 0.25rem; font-family: monospace; font-size: 0.75rem; border: 1px solid var(--border);',
+                                   placeholder: 'hex, rgb(), hsl(), named color',
                                    value: c,
                                    onInput: (e) => {
                                        const oldColor = c;
-                                       const newColor = e.target.value;
-                                       if (newColor.trim()) {
+                                       const newColor = e.target.value.trim();
+                                       if (newColor) {
                                            const newColors = colors.map(ci => ci.hex === oldColor ? { ...ci, hex: newColor } : ci);
                                            setColors(newColors);
                                        }
