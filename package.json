@@ -1,15 +1,19 @@
 {
   "name": "a11y-svg-studio",
   "version": "0.1.0",
+  "type": "module",
   "description": "A11y SVG Studio — tests and helper scripts",
   "private": true,
   "scripts": {
     "test:jsdom": "node tests/ui.test.js",
+    "test:features": "node tests/features.test.js",
+    "test:regression": "node tests/regression.test.js",
+    "test": "npm run test:regression && npm run test:features && npm run test:jsdom",
     "svgo": "svgo -c svgo.config.mjs -f ./svg -o ./svg",
     "svg:lint": "svglint svg/*.svg",
     "axe": "axe --tags wcag2a,wcag2aa --exit file://$(pwd)/index.html",
     "pa11y": "pa11y --standard WCAG2AA --threshold 0 file://$(pwd)/index.html",
-    "qa": "npm run svg:lint && npm run axe && npm run pa11y"
+    "qa": "npm run test && npm run svg:lint && npm run axe && npm run pa11y"
   },
   "devDependencies": {
     "jsdom": "^22.1.0",

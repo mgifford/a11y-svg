@@ -54,10 +54,54 @@ The tool must transform raw SVGs into WCAG 2.2 AA-compliant assets that are perf
 	- Provide a single Copy button for the finalized, accessible, and minified SVG code.
 
 ## QA & Tooling Expectations
-- Keep the no-build GitHub Pages runtime, but maintainers may run local CLI helpers (`npm run svgo`, `npm run svg:lint`, `npm run axe`, `npm run pa11y`, `npm run test:jsdom`, or `npm run qa`) to vet incoming assets.
+
+### Test-Driven Architecture
+This project follows a **test-driven development** approach to prevent regressions. All code changes MUST pass the test suite before being committed or deployed.
+
+**Test Suite Structure:**
+- `tests/regression.test.js` (23 tests) — Prevents specific bugs that previously broke the application
+- `tests/features.test.js` (12 tests) — Validates critical user workflows and integrations
+- `tests/ui.test.js` — DOM structure and JSDOM validation
+- `tests/check-syntax.js` — Quick diagnostic utility for syntax/structure verification
+- See [tests/README.md](tests/README.md) for comprehensive test documentation
+
+**Required Before Every Commit:**
+```bash
+npm test  # Must pass 100% (35/35 tests)
+```
+
+**Test Coverage Areas:**
+1. **Hook scoping** — Ensures React/Preact hooks remain inside component boundaries
+2. **Constant definitions** — Validates required constants exist (BEAUTIFIED_DISPLAY_SUFFIX, etc.)
+3. **Function scope** — Prevents functions like `computeCaretPosition` from being nested incorrectly
+4. **Preview rendering** — Ensures key props force re-renders on content changes
+5. **Dual-mode color handling** — Validates dark mode (`data-dark-*`) attribute preservation
+6. **Syntax integrity** — Catches structural corruption (missing braces, incomplete functions)
+7. **Event flow** — Validates commitBeautifiedChange → buildLightDarkPreview → preview update
+
+**Development Cycle:**
+1. Make changes to `app.js`, `styles.css`, or `index.html`
+2. Run `npm test` — if any test fails, fix before proceeding
+3. Test manually in browser at http://localhost:8008
+4. Run `npm run qa` for full accessibility validation
+5. Commit only when all tests pass
+
+**QA Scripts:**
+- `npm test` — Runs all test suites (regression, features, UI)
+- `npm run test:regression` — Quick smoke test for known issues
+- `npm run test:features` — Validates feature integrations
+- `npm run test:jsdom` — DOM structure validation
+- `npm run svgo` — Optimize SVGs with accessibility preservation
+- `npm run svg:lint` — Lint SVG assets
+- `npm run axe` — WCAG 2.0 Level AA automated accessibility testing
+- `npm run pa11y` — Additional accessibility validation
+- `npm run qa` — Full suite: tests + linting + accessibility
+
+### Legacy QA Documentation
+- Keep the no-build GitHub Pages runtime, but maintainers may run local CLI helpers to vet incoming assets.
 - Ensure SVG assets committed to `svg/` pass these scripts; treat failures as blockers before shipping UI changes.
-- When documenting new features, mention which QA script protects that surface so contributors know how to validate their changes.
-- All contrast calculation logic must be validated by `tests/contrast.test.js` which runs helper functions in a VM sandbox without browser dependencies.
+- When documenting new features, mention which test or QA script protects that surface.
+- All contrast calculation logic must be validated by the test suite.
 - Linting checklist (derive from the normative specs above and keep tooling in sync):
 	1. Accessible naming: `role="img"`, `aria-labelledby`, `<title>`, `<desc>` as per [SVG_ACCESSIBILITY_BEST_PRACTICES.md](SVG_ACCESSIBILITY_BEST_PRACTICES.md#1.-accessible-naming).
 	2. Structural integrity: IDs, namespaces, and semantics preserved; reject any SVGO change that violates Sections 2 and 4 of [SVG_OPTIMIZATION_BEST_PRACTICES.md](SVG_OPTIMIZATION_BEST_PRACTICES.md).
@@ -79,11 +123,21 @@ The tool must transform raw SVGs into WCAG 2.2 AA-compliant assets that are perf
 - Both profiles MUST refuse to remove `<title>`, `<desc>`, `viewBox`, or IDs; if SVGO introduces new plugins, reconcile them against Sections 4 and 5 before adoption.
 
 ## Development Workflow
-1. Make changes to `app.js`, `styles.css`, or `index.html`
-2. Test locally by opening `index.html` in a browser
-3. Run `npm run qa` to validate accessibility compliance
-4. Run `npm run test:jsdom` to validate contrast calculations
-5. Commit only if all tests pass and accessibility is maintained
+
+**Test-First Approach:**
+1. Before making changes, run `npm test` to establish baseline
+2. Make changes to `app.js`, `styles.css`, or `index.html`
+3. Run `npm test` after each significant change
+4. If tests fail, fix code or update tests (with clear justification)
+5. Test manually in browser at http://localhost:8008
+6. Run `npm run qa` for full accessibility validation
+7. Commit only when all tests pass (35/35)
+
+**When Tests Fail:**
+- Check [tests/README.md](tests/README.md) for failure explanations
+- Use `node tests/check-syntax.js` for quick diagnostics
+- Each test documents the specific bug it prevents
+- If legitimate change requires test updates, document why in commit message
 
 ## Code Style Guidelines
 - Use ES modules with CDN imports (no bundler)

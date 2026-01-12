@@ -1,3 +1,20 @@
+/*
+ * A11y-SVG-Studio
+ * Copyright (C) 2026 Mike Gifford and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 import { h, render } from 'https://esm.sh/preact@10.19.3';
 import { useState, useEffect, useRef, useMemo, useLayoutEffect, useCallback } from 'https://esm.sh/preact@10.19.3/hooks';
 import { optimize } from 'https://esm.sh/svgo@3.2.0/dist/svgo.browser.js';
@@ -46,63 +63,20 @@ function beautifySvg(svg) {
         }
     }
 }
-// Helper: Get WCAG 2.2 AA level (text vs non-text)
+
 function getWCAGLevel(ratio, isText = false, isLarge = false) {
     if (isText) {
-        // Text: 4.5:1 = AA, 7:1 = AAA (normal)
-        // Large text: 3:1 = AA, 4.5:1 = AAA
         const aaThreshold = isLarge ? 3 : 4.5;
         const aaaThreshold = isLarge ? 4.5 : 7;
-        
         if (ratio >= aaaThreshold) return 'AAA';
         if (ratio >= aaThreshold) return 'AA';
         return 'Fail';
     } else {
-        // Non-text (graphics, UI): 3:1 = AA, 4.5:1 = AAA
         if (ratio >= 4.5) return 'AAA';
         if (ratio >= 3) return 'AA';
         return 'Fail';
     }
 }
-
-// --- Components ---
-
-const App = () => {
-    const [svgInput, setSvgInput] = useState('');
-    const [processedSvg, setProcessedSvg] = useState({ code: '', light: '', dark: '' });
-    const [previewOriginal, setPreviewOriginal] = useState({ light: '', dark: '' });
-    const [previewBeautified, setPreviewBeautified] = useState({ light: '', dark: '' });
-    const [intent, setIntent] = useState('decorative'); // Default!
-    const [userHasInteracted, setUserHasInteracted] = useState(false);
-    const dialogRef = useRef(null);
-    const [tempMeta, setTempMeta] = useState({ title: '', desc: '' });
-    const [tempIntent, setTempIntent] = useState('decorative'); // For Dialog
-    const [meta, setMeta] = useState({ title: '', desc: '' });
-    const metaIsDirtyRef = useRef(false);
-    const [options, setOptions] = useState({
-        useCurrentColor: false,
-        injectDarkMode: false,
-        useCssVars: false
-    });
-    const [colors, setColors] = useState([]); // [{ hex: '#...', isText: bool, isLarge: bool, count: num }]
-    const [darkModeColors, setDarkModeColors] = useState({});
-
-const extractMetaFromSvg = (svgString) => {
-    try {
-        const doc = new DOMParser().parseFromString(svgString || '', 'image/svg+xml');
-        const tEl = doc.querySelector('title');
-        const dEl = doc.querySelector('desc');
-        return {
-            title: (tEl && tEl.textContent) ? tEl.textContent.trim() : '',
-            desc: (dEl && dEl.textContent) ? dEl.textContent.trim() : ''
-        };
-    } catch (err) {
-        return { title: '', desc: '' };
-    }
-};
-
-const BEAUTIFIED_DISPLAY_SUFFIX = '';
-const OPTIMIZED_DISPLAY_SUFFIX = '';
 
 const normalizeHex = (hex) => {
     if (!hex) return null;
@@ -267,141 +241,6 @@ const suggestAccessibleColor = (hex, bgLight, bgDark, isText, contrastMode) => {
         return Math.min(ratioLight, ratioDark) >= targetRatio;
     };
 
-    for (let step = 1; step <= maxSteps; step++) {
-        const delta = step * 1.5;
-        const candidates = [
-            Math.min(100, startHsl.l + delta),
-            Math.max(0, startHsl.l - delta)
-        ].map(lVal => rgbToHex(hslToRgb({ h: startHsl.h, s: startHsl.s, l: lVal })));
-        for (const candidate of candidates) {
-            if (meetsContrast(candidate)) return candidate;
-        }
-    }
-
-    for (let step = 1; step <= 20; step++) {
-        const newS = Math.max(0, startHsl.s - step * 4);
-        const candidate = rgbToHex(hslToRgb({ h: startHsl.h, s: newS, l: startHsl.l }));
-        if (meetsContrast(candidate)) return candidate;
-    }
-
-    for (let dh = -18; dh <= 18; dh += 3) {
-        for (let dl = -12; dl <= 12; dl += 3) {
-            const candidate = rgbToHex(hslToRgb({
-                h: (startHsl.h + dh + 360) % 360,
-                s: startHsl.s,
-                l: Math.min(100, Math.max(0, startHsl.l + dl))
-            }));
-            if (meetsContrast(candidate)) return candidate;
-        }
-    }
-
-    const white = '#ffffff';
-    if (meetsContrast(white)) return white;
-    const black = '#000000';
-    if (meetsContrast(black)) return black;
-    return hex;
-};
-
-const suggestDualContrastColor = (hex, bgLight, bgDark, isText, isLarge) => {
-    const startRgb = hexToRgb(hex);
-    const startHsl = rgbToHsl(startRgb);
-    const maxSteps = 30;
-
-    const meetsAll = (candidate) => {
-        try {
-            const ratioLight = getContrastRatio(candidate, bgLight);
-            const ratioDark = getContrastRatio(candidate, bgDark);
-            const level = getWCAGLevel(Math.min(ratioLight, ratioDark), isText, isLarge);
-            if (level === 'Fail') return false;
-            if (isText) {
-                const lcLight = Math.abs(getAPCAContrast(candidate, bgLight));
-                const lcDark = Math.abs(getAPCAContrast(candidate, bgDark));
-                if (Math.min(lcLight, lcDark) < 75) return false;
-            }
-            return true;
-        } catch (e) {
-            return false;
-        }
-    };
-
-    for (let step = 1; step <= maxSteps; step++) {
-        const delta = step * 1.5;
-        const candidates = [
-            Math.min(100, startHsl.l + delta),
-            Math.max(0, startHsl.l - delta)
-        ].map(lVal => rgbToHex(hslToRgb({ h: startHsl.h, s: startHsl.s, l: lVal })));
-        for (const candidate of candidates) {
-            if (meetsAll(candidate)) return candidate;
-        }
-    }
-
-    for (let step = 1; step <= 20; step++) {
-        const newS = Math.max(0, startHsl.s - step * 4);
-        const candidate = rgbToHex(hslToRgb({ h: startHsl.h, s: newS, l: startHsl.l }));
-        if (meetsAll(candidate)) return candidate;
-    }
-
-    for (let dh = -18; dh <= 18; dh += 3) {
-        for (let dl = -12; dl <= 12; dl += 3) {
-            const candidate = rgbToHex(hslToRgb({
-                h: (startHsl.h + dh + 360) % 360,
-                s: startHsl.s,
-                l: Math.min(100, Math.max(0, startHsl.l + dl))
-            }));
-            if (meetsAll(candidate)) return candidate;
-        }
-    }
-
-    const white = '#ffffff';
-    if (meetsAll(white)) return white;
-    const black = '#000000';
-    if (meetsAll(black)) return black;
-    return hex;
-};
-
-const isTextElement = (el) => {
-    if (!el || !el.tagName) return false;
-    const tag = el.tagName.toLowerCase();
-    if (['text', 'tspan', 'textpath', 'title'].includes(tag)) return true;
-    if (el.childNodes && el.childNodes.length > 0) {
-        for (const node of el.childNodes) {
-            if (node.nodeType === 3 && node.textContent.trim().length > 0) return true;
-            if (node.nodeType === 1 && isTextElement(node)) return true;
-        }
-    }
-    return false;
-};
-
-let latestClassStyles = new Map();
-
-const getFontSize = (el) => {
-    const fontSizeAttr = el.getAttribute && el.getAttribute('font-size');
-    if (fontSizeAttr) {
-        const parsed = parseFloat(fontSizeAttr);
-        if (!Number.isNaN(parsed)) return parsed;
-    }
-    const styleAttr = el.getAttribute && el.getAttribute('style');
-    if (styleAttr) {
-        const match = styleAttr.match(/font-size\s*:\s*([0-9.]+)(px|pt|rem|em)/i);
-        if (match) {
-            const val = parseFloat(match[1]);
-            if (!Number.isNaN(val)) {
-                const unit = match[2].toLowerCase();
-                if (unit === 'px') return val;
-                if (unit === 'pt') return val * (96 / 72);
-                if (unit === 'rem' || unit === 'em') return val * 16;
-            }
-        }
-    }
-    return 12;
-};
-
-const isLargeText = (el) => {
-    const size = getFontSize(el);
-    const weightAttr = el.getAttribute && el.getAttribute('font-weight');
-    const weight = weightAttr ? weightAttr.toLowerCase() : 'normal';
-    const isBold = weight === 'bold' || parseInt(weight, 10) >= 700;
-    return size >= 18 || (isBold && size >= 14);
 };
 
 const getAPCALevel = (contrast) => {
@@ -469,524 +308,573 @@ const buildLightDarkPreview = (svgString) => {
         return empty;
     }
 };
-    const [prevOverrides, setPrevOverrides] = useState({}); // store previous override for revert
-    const [elementOverrides, setElementOverrides] = useState({}); // data-a11y-id -> color
-    const [elementMap, setElementMap] = useState({}); // data-a11y-id -> { orig, attr, isText, isLarge }
-    const [a11yStatus, setA11yStatus] = useState('');
-    const [currentFileName, setCurrentFileName] = useState('');
-    const [contrastMode, setContrastMode] = useState('wcag'); // 'wcag' or 'apca'
-    const [bgLight, setBgLight] = useState('#ffffff');
-    const [bgDark, setBgDark] = useState('#121212');
-    const [showTextAsNonText, setShowTextAsNonText] = useState(false);
-    const [filterTextOnly, setFilterTextOnly] = useState(false);
-    const [previewSplit, setPreviewSplit] = useState(50); // 50/50 split percentage
-    const previewContainerRef = useRef(null);
-    const isResizingRef = useRef(false);
-    const editorTimerRef = useRef(null);
-    const [lintResults, setLintResults] = useState([]);
-    const [lintPanelVisible, setLintPanelVisible] = useState(() => {
-        try {
-            const stored = localStorage.getItem('lintPanelVisible');
-            if (stored === 'false') return false;
-            if (stored === 'true') return true;
-        } catch (e) {}
-        return true;
-    });
-    const rawInputTimerRef = useRef(null);
-    const [originalCode, setOriginalCode] = useState('');
-    const [beautifiedCode, setBeautifiedCode] = useState('');
-    const [optimizedCode, setOptimizedCode] = useState('');
-    const [activeEditorTab, setActiveEditorTab] = useState('beautified');
-    const [recentHighlightTokens, setRecentHighlightTokens] = useState([]);
-    const highlightTimersRef = useRef({});
-    const [hoveredColor, setHoveredColor] = useState(null);
-    const beautifiedTextareaRef = useRef(null);
-    const optimizedTextareaRef = useRef(null);
-    const beautifiedSelectionRef = useRef({ start: 0, end: 0, direction: 'none', scrollTop: 0, scrollLeft: 0, restore: false });
-    const skipNextAutoOptimizeRef = useRef(false);
-    const latestSvgRef = useRef('');
-    const lintListRef = useRef(null);
-    const fileInputRef = useRef(null);
-    const [caretStyle, setCaretStyle] = useState({ top: 0, left: 0, height: 18, visible: false });
-    const [accordionState, setAccordionState] = useState(() => {
-        try {
-            return JSON.parse(localStorage.getItem('accordionState') || '{"finalize":true}');
-        } catch (e) { return { finalize: true }; }
-    });
 
-    // Theme (system/light/dark)
-    const [theme, setTheme] = useState(() => {
-        try { return localStorage.getItem('theme') || 'system'; } catch (e) { return 'system'; }
-    });
+const BEAUTIFIED_DISPLAY_SUFFIX = '';
+const OPTIMIZED_DISPLAY_SUFFIX = '';
 
-    // --- Helpers ---
-
-    const addHighlightToken = (token) => {
-        if (!token) return;
-        const norm = normalizeHex(token) || token;
-        if (!norm) return;
-        setRecentHighlightTokens(prev => {
-            const filtered = prev.filter(t => t !== norm);
-            return [...filtered, norm];
+const App = () => {
+    const [svgInput, setSvgInput] = useState('');
+        const [processedSvg, setProcessedSvg] = useState({ code: '', light: '', dark: '' });
+        const [previewOriginal, setPreviewOriginal] = useState({ light: '', dark: '' });
+        const [previewBeautified, setPreviewBeautified] = useState({ light: '', dark: '' });
+        const [intent, setIntent] = useState('decorative');
+        const [userHasInteracted, setUserHasInteracted] = useState(false);
+        const dialogRef = useRef(null);
+        const [tempMeta, setTempMeta] = useState({ title: '', desc: '' });
+        const [tempIntent, setTempIntent] = useState('decorative');
+        const [meta, setMeta] = useState({ title: '', desc: '' });
+        const metaIsDirtyRef = useRef(false);
+        const [options, setOptions] = useState({
+            useCurrentColor: false,
+            injectDarkMode: false,
+            useCssVars: false
         });
-        if (highlightTimersRef.current[norm]) clearTimeout(highlightTimersRef.current[norm]);
-        highlightTimersRef.current[norm] = setTimeout(() => {
-            setRecentHighlightTokens(prev => prev.filter(t => t !== norm));
-            delete highlightTimersRef.current[norm];
-        }, 6000);
-    };
+        const [colors, setColors] = useState([]);
+        const [darkModeColors, setDarkModeColors] = useState({});
 
-    const combinedHighlightTokens = useMemo(() => {
-        const set = new Set(recentHighlightTokens);
-        if (hoveredColor) set.add(hoveredColor);
-        return Array.from(set);
-    }, [recentHighlightTokens, hoveredColor]);
-
-    const onIntentChange = (newIntent) => {
-        setIntent(newIntent);
-        setUserHasInteracted(true);
-    };
-
-    // Filename-like detection: avoid using filenames as title/desc
-    const looksLikeFilename = (s) => {
-        if (!s) return false;
-        const str = String(s).trim();
-        if (/\.[a-z0-9]{2,4}$/i.test(str)) return true; // has extension
-        if (/[\\/]/.test(str)) return true; // path-like
-        const base = (currentFileName || '').replace(/\.[^/.]+$/, '').toLowerCase();
-        if (base && str.toLowerCase() === base) return true; // matches file basename
-        return false;
-    };
-
-    const countWords = (s) => (String(s || '').trim().split(/\s+/).filter(Boolean).length);
-
-    const computeIntentDisplay = () => {
-        const t = (meta.title || '').trim();
-        const d = (meta.desc || '').trim();
-        const hasTitle = t.length > 0;
-        const hasDesc = d.length > 0;
-        const titleWords = countWords(t);
-        const descWords = countWords(d);
-        const titleLooksFile = looksLikeFilename(t);
-        const descLooksFile = looksLikeFilename(d);
-
-        if (!hasTitle && !hasDesc) return { display: 'Decorative', statusClass: 'status-yellow' };
-        if (hasDesc && !hasTitle) return { display: 'Error', statusClass: 'status-red' };
-        const isGood = hasTitle && hasDesc && titleWords >= 1 && titleWords <= 3 && descWords >= 5 && !titleLooksFile && !descLooksFile;
-        return { display: 'Informative', statusClass: isGood ? 'status-green' : '' };
-    };
-
-    const handleInlineMetaChange = (field, value) => {
-        setUserHasInteracted(true);
-        metaIsDirtyRef.current = true;
-        const nextMeta = { ...meta, [field]: value };
-        setMeta(nextMeta);
-        const hasTitle = String(nextMeta.title || '').trim().length > 0;
-        setIntent(hasTitle ? 'informational' : 'decorative');
-    };
-
-    const triggerFilePicker = () => {
-        if (fileInputRef.current) fileInputRef.current.click();
-    };
-
-    const openMetaDialog = () => {
-        setTempMeta({ ...meta }); // Copy current meta
-        setTempIntent(intent);
-        if (dialogRef.current) dialogRef.current.showModal();
-    };
-
-    const closeMetaDialog = (save) => {
-        if (save) {
-            metaIsDirtyRef.current = true;
-            setIntent(tempIntent);
-            if (tempIntent === 'informational') {
-                setMeta(tempMeta);
-            } else {
-                 setMeta({ title: '', desc: '' });
-            }
-            setUserHasInteracted(true);
-        } else {
-            metaIsDirtyRef.current = false;
-        }
-        if (dialogRef.current) dialogRef.current.close();
-    };
-
-    // --- Parsers & Processors ---
-
-    const parseColors = (svgString) => {
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(svgString, 'image/svg+xml');
-        const colorMap = new Map(); // key -> { hex, isText, isLarge, count, originals: Set }
-        const elements = doc.querySelectorAll('*');
-
-        // collect CSS variables and basic class-level styles from <style> blocks
-        const cssVars = {};
-        const capturedClassStyles = new Map();
-        const cleanDecl = (value) => value.replace(/!important\s*$/i, '').trim();
-        const styleEls = doc.querySelectorAll('style');
-        styleEls.forEach(s => {
-            const txt = s.textContent || '';
-            // simple regex to capture --var: value;
-            const re = /(--[a-zA-Z0-9-_]+)\s*:\s*([^;]+)\s*;/g;
-            let m;
-            while ((m = re.exec(txt)) !== null) {
-                cssVars[m[1].trim()] = cleanDecl(m[2]);
-            }
-
-            const ruleRe = /([^{}]+)\{([^{}]+)\}/g;
-            let rm;
-            while ((rm = ruleRe.exec(txt)) !== null) {
-                const selectors = rm[1].split(',').map(sel => sel.trim()).filter(Boolean);
-                if (selectors.length === 0) continue;
-                const body = rm[2];
-                const fillMatch = body.match(/fill\s*:\s*([^;!]+)(?:!important)?/i);
-                const strokeMatch = body.match(/stroke\s*:\s*([^;!]+)(?:!important)?/i);
-                const colorMatch = body.match(/color\s*:\s*([^;!]+)(?:!important)?/i);
-                if (!fillMatch && !strokeMatch && !colorMatch) continue;
-                selectors.forEach(sel => {
-                    if (/^\.[a-zA-Z0-9_-]+$/.test(sel)) {
-                        const name = sel.slice(1);
-                        const existing = capturedClassStyles.get(name) || {};
-                        if (fillMatch) existing.fill = cleanDecl(fillMatch[1]);
-                        if (strokeMatch) existing.stroke = cleanDecl(strokeMatch[1]);
-                        if (colorMatch) existing.color = cleanDecl(colorMatch[1]);
-                        capturedClassStyles.set(name, existing);
-                    }
-                });
-            }
-        });
-
-        latestClassStyles = capturedClassStyles;
-
-        // helper to resolve color tokens (hex, var(), currentColor, color-mix)
-        const resolveColorValue = (val, el) => {
-            if (!val) return null;
-            const v = val.trim();
-            if (!v || v === 'none' || v.toLowerCase() === 'transparent') return null;
-            // direct hex
-            const hexRe = /^#([0-9a-fA-F]{3,8})$/;
-            const mhex = v.match(hexRe);
-            if (mhex) {
-                // normalize 3-char to 6-char
-                let h = mhex[0].toLowerCase();
-                if (h.length === 4) {
-                    h = '#' + h[1]+h[1]+h[2]+h[2]+h[3]+h[3];
-                }
-                return h;
-            }
-            // var(--name)
-            const varRe = /^var\((--[a-zA-Z0-9-_]+)\)$/i;
-            const mv = v.match(varRe);
-            if (mv) {
-                const name = mv[1];
-                const resolved = cssVars[name];
-                if (resolved) return resolveColorValue(resolved, el);
-                return null;
-            }
-            // currentColor -> attempt to read from element or svg root styles
-            if (v === 'currentColor') {
-                // check inline style on element or nearest svg root
-                let cur = null;
-                const styleAttr = el.getAttribute && el.getAttribute('style');
-                if (styleAttr) {
-                    const m = styleAttr.match(/color\s*:\s*([^;]+)/);
-                    if (m) cur = m[1].trim();
-                }
-                if (!cur) {
-                    const svgRoot = doc.querySelector('svg');
-                    if (svgRoot) {
-                        const rootStyle = svgRoot.getAttribute && svgRoot.getAttribute('style');
-                        if (rootStyle) {
-                            const m2 = rootStyle.match(/color\s*:\s*([^;]+)/);
-                            if (m2) cur = m2[1].trim();
-                        }
-                        // also check attribute color
-                        if (!cur) cur = svgRoot.getAttribute('color');
-                    }
-                }
-                if (!cur) {
-                    const classAttr = el.getAttribute && el.getAttribute('class');
-                    if (classAttr) {
-                        classAttr.split(/\s+/).some(cls => {
-                            const info = latestClassStyles && latestClassStyles.get(cls.trim());
-                            if (info && info.color) {
-                                cur = info.color;
-                                return true;
-                            }
-                            return false;
-                        });
-                    }
-                }
-                if (cur) return resolveColorValue(cur, el);
-                return null;
-            }
-            // color-mix(in srgb, A 70%, B) basic parser
-            const mixRe = /color-mix\([^,]+,\s*([^\s,]+)\s*(\d+)%?\s*,\s*([^\)]+)\)/i;
-            const mm = v.match(mixRe);
-            if (mm) {
-                const a = mm[1];
-                const pct = parseFloat(mm[2]) / 100.0;
-                const b = mm[3].trim();
-                const ah = resolveColorValue(a, el);
-                let bh = resolveColorValue(b, el);
-                if (!bh) {
-                    // if b is 'transparent' or not resolvable, choose white as fallback
-                    bh = '#ffffff';
-                }
-                if (ah) {
-                    return mixHex(ah, bh, pct);
-                }
-                return null;
-            }
-            // rgb(), rgba(), named colors basic handling: try to use canvas to convert
+        const extractMetaFromSvg = (svgString) => {
             try {
-                const ctx = document.createElement('canvas').getContext('2d');
-                ctx.fillStyle = v;
-                const rgba = ctx.fillStyle; // returns rgb(...) or #rrggbb
-                if (rgba) return resolveColorValue(rgba, el);
+                const doc = new DOMParser().parseFromString(svgString || '', 'image/svg+xml');
+                const tEl = doc.querySelector('title');
+                const dEl = doc.querySelector('desc');
+                return {
+                    title: (tEl && tEl.textContent) ? tEl.textContent.trim() : '',
+                    desc: (dEl && dEl.textContent) ? dEl.textContent.trim() : ''
+                };
+            } catch (err) {
+                return { title: '', desc: '' };
+            }
+        };
+
+        const [prevOverrides, setPrevOverrides] = useState({}); // store previous override for revert
+        const [elementOverrides, setElementOverrides] = useState({}); // data-a11y-id -> color
+        const [elementMap, setElementMap] = useState({}); // data-a11y-id -> { orig, attr, isText, isLarge }
+        const [a11yStatus, setA11yStatus] = useState('');
+        const [currentFileName, setCurrentFileName] = useState('');
+        const [contrastMode, setContrastMode] = useState('wcag'); // 'wcag' or 'apca'
+        const [bgLight, setBgLight] = useState('#ffffff');
+        const [bgDark, setBgDark] = useState('#121212');
+        const [showTextAsNonText, setShowTextAsNonText] = useState(false);
+        const [filterTextOnly, setFilterTextOnly] = useState(false);
+        const [previewSplit, setPreviewSplit] = useState(50); // 50/50 split percentage
+        const previewContainerRef = useRef(null);
+        const isResizingRef = useRef(false);
+        const editorTimerRef = useRef(null);
+        const [lintResults, setLintResults] = useState([]);
+        const [lintPanelVisible, setLintPanelVisible] = useState(() => {
+            try {
+                const stored = localStorage.getItem('lintPanelVisible');
+                if (stored === 'false') return false;
+                if (stored === 'true') return true;
             } catch (e) {}
-            return null;
-        };
-
-        const mixHex = (hexA, hexB, weightA) => {
-            const a = hexToRgb(hexA);
-            const b = hexToRgb(hexB);
-            const r = Math.round(a.r * weightA + b.r * (1 - weightA));
-            const g = Math.round(a.g * weightA + b.g * (1 - weightA));
-            const bl = Math.round(a.b * weightA + b.b * (1 - weightA));
-            return rgbToHex({ r, g, b: bl });
-        };
-
-        const classStyleLookup = latestClassStyles || capturedClassStyles || new Map();
-
-        elements.forEach(el => {
-            const isText = isTextElement(el);
-            const isLarge = isText ? isLargeText(el) : false;
-
-            // check fill and stroke attributes and inline styles
-            const tryAttrs = [];
-            ['fill', 'stroke'].forEach(attr => {
-                const av = el.getAttribute(attr);
-                if (av) tryAttrs.push({ token: av, attr });
-            });
-            // inline style string
-            const styleAttr = el.getAttribute && el.getAttribute('style');
-            if (styleAttr) {
-                // find fill:... and stroke:...
-                const mfill = styleAttr.match(/fill\s*:\s*([^;]+)/i);
-                if (mfill) tryAttrs.push({ token: mfill[1].trim(), attr: 'fill', inline: true });
-                const mstroke = styleAttr.match(/stroke\s*:\s*([^;]+)/i);
-                if (mstroke) tryAttrs.push({ token: mstroke[1].trim(), attr: 'stroke', inline: true });
-            }
-
-            const classAttr = el.getAttribute && el.getAttribute('class');
-            if (classAttr) {
-                classAttr.split(/\s+/).filter(Boolean).forEach(cls => {
-                    const info = classStyleLookup.get(cls);
-                    if (!info) return;
-                    if (info.fill) tryAttrs.push({ token: info.fill, attr: 'fill', className: cls });
-                    if (info.stroke) tryAttrs.push({ token: info.stroke, attr: 'stroke', className: cls });
-                    if (info.color) {
-                        tryAttrs.push({ token: info.color, attr: 'fill', className: cls, implied: true });
-                        tryAttrs.push({ token: info.color, attr: 'stroke', className: cls, implied: true });
-                    }
-                });
-            }
-
-            tryAttrs.forEach(item => {
-                const orig = item.token;
-                const hex = resolveColorValue(orig, el);
-                if (!hex) return;
-                const key = hex;
-                if (colorMap.has(key)) {
-                    const info = colorMap.get(key);
-                    info.count++;
-                    if (isText) info.isText = true;
-                    if (isLarge) info.isLarge = true;
-                    info.originals.add(orig);
-                } else {
-                    colorMap.set(key, { hex: key, isText: isText, isLarge: isLarge, count: 1, originals: new Set([orig]) });
-                }
-            });
+            return true;
+        });
+        const rawInputTimerRef = useRef(null);
+        const [originalCode, setOriginalCode] = useState('');
+        const [beautifiedCode, setBeautifiedCode] = useState('');
+        const [optimizedCode, setOptimizedCode] = useState('');
+        const [activeEditorTab, setActiveEditorTab] = useState('beautified');
+        const [recentHighlightTokens, setRecentHighlightTokens] = useState([]);
+        const highlightTimersRef = useRef({});
+        const [hoveredColor, setHoveredColor] = useState(null);
+        const beautifiedTextareaRef = useRef(null);
+        const optimizedTextareaRef = useRef(null);
+        const beautifiedSelectionRef = useRef({ start: 0, end: 0, direction: 'none', scrollTop: 0, scrollLeft: 0, restore: false });
+        const skipNextAutoOptimizeRef = useRef(false);
+        const latestSvgRef = useRef('');
+        const lintListRef = useRef(null);
+        const fileInputRef = useRef(null);
+        const [caretStyle, setCaretStyle] = useState({ top: 0, left: 0, height: 18, visible: false });
+        const [accordionState, setAccordionState] = useState(() => {
+            try {
+                return JSON.parse(localStorage.getItem('accordionState') || '{"finalize":true}');
+            } catch (e) { return { finalize: true }; }
+        });
+        const [theme, setTheme] = useState(() => {
+            try { return localStorage.getItem('theme') || 'system'; } catch (e) { return 'system'; }
         });
 
-        // convert map to array
-        return Array.from(colorMap.values()).map(v => ({ hex: v.hex, isText: v.isText, isLarge: v.isLarge, count: v.count, originals: Array.from(v.originals) }));
-    };
+        let latestClassStyles = new Map();
 
-    // Linting: parse SVG, report XML errors and accessibility issues (WCAG 2.2 AA + APCA)
-    const lintSvg = (svgString) => {
-        const issues = [];
-        if (!svgString || svgString.trim().length === 0) return issues;
-        try {
+        const addHighlightToken = (token) => {
+            if (!token) return;
+            const norm = normalizeHex(token) || token;
+            if (!norm) return;
+            setRecentHighlightTokens(prev => {
+                const filtered = prev.filter(t => t !== norm);
+                return [...filtered, norm];
+            });
+            if (highlightTimersRef.current[norm]) clearTimeout(highlightTimersRef.current[norm]);
+            highlightTimersRef.current[norm] = setTimeout(() => {
+                setRecentHighlightTokens(prev => prev.filter(t => t !== norm));
+                delete highlightTimersRef.current[norm];
+            }, 6000);
+        };
+
+        const combinedHighlightTokens = useMemo(() => {
+            const set = new Set(recentHighlightTokens);
+            if (hoveredColor) set.add(hoveredColor);
+            return Array.from(set);
+        }, [recentHighlightTokens, hoveredColor]);
+
+        const onIntentChange = (newIntent) => {
+            setIntent(newIntent);
+            setUserHasInteracted(true);
+        };
+
+        const looksLikeFilename = (s) => {
+            if (!s) return false;
+            const str = String(s).trim();
+            if (/\.[a-z0-9]{2,4}$/i.test(str)) return true;
+            if (/[\\/]/.test(str)) return true;
+            const base = (currentFileName || '').replace(/\.[^/.]+$/, '').toLowerCase();
+            if (base && str.toLowerCase() === base) return true;
+            return false;
+        };
+
+        const countWords = (s) => (String(s || '').trim().split(/\s+/).filter(Boolean).length);
+
+        const computeIntentDisplay = () => {
+            const t = (meta.title || '').trim();
+            const d = (meta.desc || '').trim();
+            const hasTitle = t.length > 0;
+            const hasDesc = d.length > 0;
+            const titleWords = countWords(t);
+            const descWords = countWords(d);
+            const titleLooksFile = looksLikeFilename(t);
+            const descLooksFile = looksLikeFilename(d);
+
+            if (!hasTitle && !hasDesc) return { display: 'Decorative', statusClass: 'status-yellow' };
+            if (hasDesc && !hasTitle) return { display: 'Error', statusClass: 'status-red' };
+            const isGood = hasTitle && hasDesc && titleWords >= 1 && titleWords <= 3 && descWords >= 5 && !titleLooksFile && !descLooksFile;
+            return { display: 'Informative', statusClass: isGood ? 'status-green' : '' };
+        };
+
+        const handleInlineMetaChange = (field, value) => {
+            setUserHasInteracted(true);
+            metaIsDirtyRef.current = true;
+            const nextMeta = { ...meta, [field]: value };
+            setMeta(nextMeta);
+            const hasTitle = String(nextMeta.title || '').trim().length > 0;
+            setIntent(hasTitle ? 'informational' : 'decorative');
+        };
+
+        const triggerFilePicker = () => {
+            if (fileInputRef.current) fileInputRef.current.click();
+        };
+
+        const openMetaDialog = () => {
+            setTempMeta({ ...meta });
+            setTempIntent(intent);
+            if (dialogRef.current) dialogRef.current.showModal();
+        };
+
+        const closeMetaDialog = (save) => {
+            if (save) {
+                metaIsDirtyRef.current = true;
+                setIntent(tempIntent);
+                if (tempIntent === 'informational') {
+                    setMeta(tempMeta);
+                } else {
+                    setMeta({ title: '', desc: '' });
+                }
+                setUserHasInteracted(true);
+            } else {
+                metaIsDirtyRef.current = false;
+            }
+            if (dialogRef.current) dialogRef.current.close();
+        };
+
+        const parseColors = (svgString) => {
             const parser = new DOMParser();
             const doc = parser.parseFromString(svgString, 'image/svg+xml');
-            // DOMParser places parse errors in <parsererror>
-            const parserError = doc.querySelector('parsererror');
-            if (parserError) {
-                const txt = parserError.textContent || 'XML parse error';
-                issues.push({ level: 'error', message: `XML parse error: ${txt.trim().slice(0,200)}` });
-                return issues;
-            }
-            const svgEl = doc.querySelector('svg');
-            if (!svgEl) {
-                issues.push({ level: 'error', message: 'No <svg> element found' });
-                return issues;
-            }
+            const colorMap = new Map();
+            const elements = doc.querySelectorAll('*');
 
-            // Meta checks: title/desc for informational intent
-            // Check user-provided meta (Accessibility Intent block), not raw SVG tags
-            // This avoids false positives when user has filled in the form but hasn't clicked Save yet.
-            if (intent === 'informational') {
-                if (!meta.title) issues.push({ level: 'error', message: 'Missing Title in Accessibility Intent (required for informational SVG)' });
-                if (!meta.desc) issues.push({ level: 'warning', message: 'Missing Description in Accessibility Intent (recommended for informational SVG)' });
-            }
-
-            // Color contrast checks
-            const colorList = parseColors(svgString);
-            colorList.forEach(c => {
-                const hex = c.hex;
-                const isText = !!c.isText;
-                const isLarge = !!c.isLarge;
-                const originals = c.originals || [];
-                const targetLabel = isText ? (isLarge ? 'large text' : 'text') : 'non-text graphics';
-
-                // WCAG: compute against both light and dark backgrounds
-                const ratioLight = getContrastRatio(hex, bgLight);
-                const ratioDark = getContrastRatio(hex, bgDark);
-                const wcagLightLevel = getWCAGLevel(ratioLight, isText, isLarge);
-                const wcagDarkLevel = getWCAGLevel(ratioDark, isText, isLarge);
-                const wcagFail = wcagLightLevel === 'Fail' || wcagDarkLevel === 'Fail';
-                if (wcagFail) {
-                    const suggested = suggestAccessibleColor(hex, bgLight, bgDark, isText, contrastMode);
-                    const wcagDetail = {
-                        check: 'WCAG 2.2',
-                        target: targetLabel,
-                        requirement: isText ? (isLarge ? '≥ 3.0:1' : '≥ 4.5:1') : '≥ 3.0:1',
-                        light: {
-                            background: bgLight,
-                            ratio: ratioLight,
-                            status: wcagLightLevel === 'Fail' ? 'Fail' : wcagLightLevel
-                        },
-                        dark: {
-                            background: bgDark,
-                            ratio: ratioDark,
-                            status: wcagDarkLevel === 'Fail' ? 'Fail' : wcagDarkLevel
-                        }
-                    };
-                    const heading = `Color ${hex} fails WCAG contrast for ${targetLabel}`;
-                    issues.push({ level: 'warning', type: 'color', hex, originals, suggested, heading, detail: wcagDetail, findingCount: 1, isText, isLarge });
+            const cssVars = {};
+            const capturedClassStyles = new Map();
+            const cleanDecl = (value) => value.replace(/!important\s*$/i, '').trim();
+            const styleEls = doc.querySelectorAll('style');
+            styleEls.forEach(styleEl => {
+                const txt = styleEl.textContent || '';
+                const re = /(--[a-zA-Z0-9-_]+)\s*:\s*([^;]+)\s*;/g;
+                let match;
+                while ((match = re.exec(txt)) !== null) {
+                    cssVars[match[1].trim()] = cleanDecl(match[2]);
                 }
 
-                // APCA: only evaluate for text-bearing elements per current guidelines
-                if (isText) {
-                    const apcaLight = getAPCAContrast(hex, bgLight);
-                    const apcaDark = getAPCAContrast(hex, bgDark);
-                    const absLight = Math.abs(apcaLight);
-                    const absDark = Math.abs(apcaDark);
-                    const apcaThreshold = isText ? 75 : 60;
-                    if (absLight < apcaThreshold || absDark < apcaThreshold) {
-                        const suggested2 = suggestAccessibleColor(hex, bgLight, bgDark, isText, 'apca');
-                        const apcaDetail = {
-                            check: 'APCA',
+                const ruleRe = /([^{}]+)\{([^{}]+)\}/g;
+                let ruleMatch;
+                while ((ruleMatch = ruleRe.exec(txt)) !== null) {
+                    const selectors = ruleMatch[1].split(',').map(sel => sel.trim()).filter(Boolean);
+                    if (selectors.length === 0) continue;
+                    const body = ruleMatch[2];
+                    const fillMatch = body.match(/fill\s*:\s*([^;!]+)(?:!important)?/i);
+                    const strokeMatch = body.match(/stroke\s*:\s*([^;!]+)(?:!important)?/i);
+                    const colorMatch = body.match(/color\s*:\s*([^;!]+)(?:!important)?/i);
+                    if (!fillMatch && !strokeMatch && !colorMatch) continue;
+                    selectors.forEach(sel => {
+                        if (/^\.[a-zA-Z0-9_-]+$/.test(sel)) {
+                            const name = sel.slice(1);
+                            const existing = capturedClassStyles.get(name) || {};
+                            if (fillMatch) existing.fill = cleanDecl(fillMatch[1]);
+                            if (strokeMatch) existing.stroke = cleanDecl(strokeMatch[1]);
+                            if (colorMatch) existing.color = cleanDecl(colorMatch[1]);
+                            capturedClassStyles.set(name, existing);
+                        }
+                    });
+                }
+            });
+
+            latestClassStyles = capturedClassStyles;
+
+            const resolveColorValue = (val, el) => {
+                if (!val) return null;
+                const v = val.trim();
+                if (!v || v === 'none' || v.toLowerCase() === 'transparent') return null;
+                const hexRe = /^#([0-9a-fA-F]{3,8})$/;
+                const mhex = v.match(hexRe);
+                if (mhex) {
+                    let h = mhex[0].toLowerCase();
+                    if (h.length === 4) {
+                        h = '#' + h[1] + h[1] + h[2] + h[2] + h[3] + h[3];
+                    }
+                    return h;
+                }
+                const varRe = /^var\((--[a-zA-Z0-9-_]+)\)$/i;
+                const mv = v.match(varRe);
+                if (mv) {
+                    const name = mv[1];
+                    const resolved = cssVars[name];
+                    if (resolved) return resolveColorValue(resolved, el);
+                    return null;
+                }
+                if (v === 'currentColor') {
+                    let cur = null;
+                    const styleAttr = el.getAttribute && el.getAttribute('style');
+                    if (styleAttr) {
+                        const m = styleAttr.match(/color\s*:\s*([^;]+)/);
+                        if (m) cur = m[1].trim();
+                    }
+                    if (!cur) {
+                        const svgRoot = doc.querySelector('svg');
+                        if (svgRoot) {
+                            const rootStyle = svgRoot.getAttribute && svgRoot.getAttribute('style');
+                            if (rootStyle) {
+                                const m2 = rootStyle.match(/color\s*:\s*([^;]+)/);
+                                if (m2) cur = m2[1].trim();
+                            }
+                            if (!cur) cur = svgRoot.getAttribute('color');
+                        }
+                    }
+                    if (!cur) {
+                        const classAttr = el.getAttribute && el.getAttribute('class');
+                        if (classAttr) {
+                            classAttr.split(/\s+/).some(cls => {
+                                const info = latestClassStyles && latestClassStyles.get(cls.trim());
+                                if (info && info.color) {
+                                    cur = info.color;
+                                    return true;
+                                }
+                                return false;
+                            });
+                        }
+                    }
+                    if (cur) return resolveColorValue(cur, el);
+                    return null;
+                }
+                const mixRe = /color-mix\([^,]+,\s*([^\s,]+)\s*(\d+)%?\s*,\s*([^\)]+)\)/i;
+                const mm = v.match(mixRe);
+                if (mm) {
+                    const a = mm[1];
+                    const pct = parseFloat(mm[2]) / 100.0;
+                    const b = mm[3].trim();
+                    const ah = resolveColorValue(a, el);
+                    let bh = resolveColorValue(b, el);
+                    if (!bh) {
+                        bh = '#ffffff';
+                    }
+                    if (ah) {
+                        return mixHex(ah, bh, pct);
+                    }
+                    return null;
+                }
+                try {
+                    const ctx = document.createElement('canvas').getContext('2d');
+                    ctx.fillStyle = v;
+                    const rgba = ctx.fillStyle;
+                    if (rgba) return resolveColorValue(rgba, el);
+                } catch (err) {}
+                return null;
+            };
+
+            const mixHex = (hexA, hexB, weightA) => {
+                const a = hexToRgb(hexA);
+                const b = hexToRgb(hexB);
+                const r = Math.round(a.r * weightA + b.r * (1 - weightA));
+                const g = Math.round(a.g * weightA + b.g * (1 - weightA));
+                const bComp = Math.round(a.b * weightA + b.b * (1 - weightA));
+                return rgbToHex({ r, g, b: bComp });
+            };
+
+            const classStyles = latestClassStyles || capturedClassStyles || new Map();
+
+            elements.forEach(el => {
+                const isText = isTextElement(el);
+                const isLarge = isText ? isLargeText(el) : false;
+                const tryAttrs = [];
+                ['fill', 'stroke'].forEach(attr => {
+                    const attrVal = el.getAttribute(attr);
+                    if (attrVal) tryAttrs.push({ token: attrVal, attr });
+                });
+
+                const styleAttr = el.getAttribute && el.getAttribute('style');
+                if (styleAttr) {
+                    const mfill = styleAttr.match(/fill\s*:\s*([^;]+)/i);
+                    if (mfill) tryAttrs.push({ token: mfill[1].trim(), attr: 'fill', inline: true });
+                    const mstroke = styleAttr.match(/stroke\s*:\s*([^;]+)/i);
+                    if (mstroke) tryAttrs.push({ token: mstroke[1].trim(), attr: 'stroke', inline: true });
+                }
+
+                const classAttr = el.getAttribute && el.getAttribute('class');
+                if (classAttr) {
+                    classAttr.split(/\s+/).filter(Boolean).forEach(cls => {
+                        const info = classStyles.get(cls);
+                        if (!info) return;
+                        if (info.fill) tryAttrs.push({ token: info.fill, attr: 'fill', className: cls });
+                        if (info.stroke) tryAttrs.push({ token: info.stroke, attr: 'stroke', className: cls });
+                        if (info.color) {
+                            tryAttrs.push({ token: info.color, attr: 'fill', className: cls, implied: true });
+                            tryAttrs.push({ token: info.color, attr: 'stroke', className: cls, implied: true });
+                        }
+                    });
+                }
+
+                const darkOverrides = {
+                    fill: el.getAttribute('data-dark-fill'),
+                    stroke: el.getAttribute('data-dark-stroke')
+                };
+
+                tryAttrs.forEach(item => {
+                    const orig = item.token;
+                    const hex = resolveColorValue(orig, el);
+                    if (!hex) return;
+                    const darkToken = darkOverrides[item.attr] || null;
+                    const darkHex = darkToken ? resolveColorValue(darkToken, el) : null;
+                    const key = `${item.attr}|${hex}|${darkHex || ''}`;
+                    if (colorMap.has(key)) {
+                        const info = colorMap.get(key);
+                        info.count++;
+                        if (isText) info.isText = true;
+                        if (isLarge) info.isLarge = true;
+                        info.originals.add(orig);
+                        if (darkToken) info.darkOriginals.add(darkToken);
+                        info.attrs.add(item.attr);
+                    } else {
+                        colorMap.set(key, {
+                            key,
+                            hex,
+                            hexDark: darkHex,
+                            isText,
+                            isLarge,
+                            count: 1,
+                            originals: new Set([orig]),
+                            darkOriginals: darkToken ? new Set([darkToken]) : new Set(),
+                            attrs: new Set([item.attr])
+                        });
+                    }
+                });
+            });
+
+            return Array.from(colorMap.values()).map(v => ({
+                hex: v.hex,
+                hexDark: v.hexDark || null,
+                isText: v.isText,
+                isLarge: v.isLarge,
+                count: v.count,
+                originals: Array.from(v.originals),
+                darkOriginals: Array.from(v.darkOriginals || []),
+                attrs: Array.from(v.attrs || [])
+            }));
+        };
+
+        const lintSvg = (svgString) => {
+            const issues = [];
+            if (!svgString || svgString.trim().length === 0) return issues;
+            try {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(svgString, 'image/svg+xml');
+                const parserError = doc.querySelector('parsererror');
+                if (parserError) {
+                    const txt = parserError.textContent || 'XML parse error';
+                    issues.push({ level: 'error', message: `XML parse error: ${txt.trim().slice(0, 200)}` });
+                    return issues;
+                }
+                const svgEl = doc.querySelector('svg');
+                if (!svgEl) {
+                    issues.push({ level: 'error', message: 'No <svg> element found' });
+                    return issues;
+                }
+
+                if (intent === 'informational') {
+                    if (!meta.title) issues.push({ level: 'error', message: 'Missing Title in Accessibility Intent (required for informational SVG)' });
+                    if (!meta.desc) issues.push({ level: 'warning', message: 'Missing Description in Accessibility Intent (recommended for informational SVG)' });
+                }
+
+                const colorList = parseColors(svgString);
+                colorList.forEach(c => {
+                    const hex = c.hex;
+                    const hexDark = c.hexDark || hex;
+                    const isText = !!c.isText;
+                    const isLarge = !!c.isLarge;
+                    const originals = c.originals || [];
+                    const targetLabel = isText ? (isLarge ? 'large text' : 'text') : 'non-text graphics';
+
+                    const ratioLight = getContrastRatio(hex, bgLight);
+                    const ratioDark = getContrastRatio(hexDark, bgDark);
+                    const wcagLightLevel = getWCAGLevel(ratioLight, isText, isLarge);
+                    const wcagDarkLevel = getWCAGLevel(ratioDark, isText, isLarge);
+                    const wcagFail = wcagLightLevel === 'Fail' || wcagDarkLevel === 'Fail';
+                    if (wcagFail) {
+                        const suggested = suggestAccessibleColor(hex, bgLight, bgDark, isText, contrastMode);
+                        const wcagDetail = {
+                            check: 'WCAG 2.2',
                             target: targetLabel,
-                            requirement: `≥ ${apcaThreshold} Lc`,
+                            requirement: isText ? (isLarge ? '≥ 3.0:1' : '≥ 4.5:1') : '≥ 3.0:1',
                             light: {
                                 background: bgLight,
-                                lc: apcaLight,
-                                status: absLight >= apcaThreshold ? 'Pass' : 'Fail'
+                                ratio: ratioLight,
+                                status: wcagLightLevel === 'Fail' ? 'Fail' : wcagLightLevel
                             },
                             dark: {
                                 background: bgDark,
-                                lc: apcaDark,
-                                status: absDark >= apcaThreshold ? 'Pass' : 'Fail'
+                                ratio: ratioDark,
+                                status: wcagDarkLevel === 'Fail' ? 'Fail' : wcagDarkLevel
                             }
                         };
-                        const heading = `Color ${hex} fails APCA contrast for ${targetLabel}`;
-                        issues.push({ level: 'warning', type: 'color', hex, originals, suggested: suggested2, heading, detail: apcaDetail, findingCount: 1, isText, isLarge });
+                        const heading = `Color ${hex} fails WCAG contrast for ${targetLabel}`;
+                        issues.push({ level: 'warning', type: 'color', hex, hexDark, originals, darkOriginals: c.darkOriginals || [], attrs: c.attrs || [], suggested, heading, detail: wcagDetail, findingCount: 1, isText, isLarge });
                     }
-                }
-            });
 
-        } catch (e) {
-            issues.push({ level: 'error', message: `Lint error: ${e && e.message ? e.message : String(e)}` });
-        }
-        return issues;
-    };
+                    if (isText) {
+                        const apcaLight = getAPCAContrast(hex, bgLight);
+                        const apcaDark = getAPCAContrast(hexDark, bgDark);
+                        const absLight = Math.abs(apcaLight);
+                        const absDark = Math.abs(apcaDark);
+                        const apcaThreshold = isText ? 75 : 60;
+                        if (absLight < apcaThreshold || absDark < apcaThreshold) {
+                            const suggested2 = suggestAccessibleColor(hex, bgLight, bgDark, isText, 'apca');
+                            const apcaDetail = {
+                                check: 'APCA',
+                                target: targetLabel,
+                                requirement: `≥ ${apcaThreshold} Lc`,
+                                light: {
+                                    background: bgLight,
+                                    lc: apcaLight,
+                                    status: absLight >= apcaThreshold ? 'Pass' : 'Fail'
+                                },
+                                dark: {
+                                    background: bgDark,
+                                    lc: apcaDark,
+                                    status: absDark >= apcaThreshold ? 'Pass' : 'Fail'
+                                }
+                            };
+                            const heading = `Color ${hex} fails APCA contrast for ${targetLabel}`;
+                            issues.push({ level: 'warning', type: 'color', hex, hexDark, originals, darkOriginals: c.darkOriginals || [], attrs: c.attrs || [], suggested: suggested2, heading, detail: apcaDetail, findingCount: 1, isText, isLarge });
+                        }
+                    }
+                });
 
-    const computeCaretPosition = (textarea) => {
-        if (!textarea || typeof textarea.selectionStart !== 'number') return null;
-        const doc = textarea.ownerDocument || document;
-        const win = doc.defaultView || window;
-        const style = win.getComputedStyle(textarea);
-
-        const mirror = doc.createElement('div');
-        mirror.style.position = 'absolute';
-        mirror.style.visibility = 'hidden';
-        mirror.style.whiteSpace = 'pre-wrap';
-        mirror.style.wordBreak = 'break-word';
-        mirror.style.top = '0';
-        mirror.style.left = '-9999px';
-        mirror.style.boxSizing = 'border-box';
-        mirror.style.padding = style.padding;
-        mirror.style.border = style.border;
-        mirror.style.fontFamily = style.fontFamily;
-        mirror.style.fontSize = style.fontSize;
-        mirror.style.fontWeight = style.fontWeight;
-        mirror.style.fontStyle = style.fontStyle;
-        mirror.style.letterSpacing = style.letterSpacing;
-        mirror.style.textTransform = style.textTransform;
-        mirror.style.textAlign = style.textAlign;
-        mirror.style.lineHeight = style.lineHeight;
-        mirror.style.tabSize = style.tabSize;
-        mirror.style.width = `${textarea.clientWidth}px`;
-        mirror.style.height = 'auto';
-        mirror.style.overflow = 'hidden';
-
-        const tabSize = Math.max(parseInt(style.tabSize, 10) || 2, 1);
-        const replaceTabs = (value) => value.replace(/\t/g, ' '.repeat(tabSize));
-
-        const selectionIndex = textarea.selectionStart;
-        const before = replaceTabs(textarea.value.slice(0, selectionIndex));
-        const beforeAdjusted = before.replace(/ /g, '\u00a0').replace(/\n$/g, '\n\u200b');
-        mirror.textContent = beforeAdjusted;
-
-        const caretMarker = doc.createElement('span');
-        const remainder = textarea.value.slice(selectionIndex);
-        caretMarker.textContent = remainder.length > 0 ? replaceTabs(remainder[0]) : '\u200b';
-        mirror.appendChild(caretMarker);
-
-        doc.body.appendChild(mirror);
-        const mirrorRect = mirror.getBoundingClientRect();
-        const caretRect = caretMarker.getBoundingClientRect();
-        const top = caretRect.top - mirrorRect.top;
-        const left = caretRect.left - mirrorRect.left;
-        doc.body.removeChild(mirror);
-
-        const borderLeft = parseFloat(style.borderLeftWidth) || 0;
-        const borderTop = parseFloat(style.borderTopWidth) || 0;
-        const lineHeight = parseFloat(style.lineHeight) || parseFloat(style.fontSize) || 16;
-
-        return {
-            top: top - textarea.scrollTop + borderTop,
-            left: left - textarea.scrollLeft + borderLeft,
-            height: lineHeight
+            } catch (err) {
+                issues.push({ level: 'error', message: `Lint error: ${err && err.message ? err.message : String(err)}` });
+            }
+            return issues;
         };
-    };
 
+        const computeCaretPosition = (textarea) => {
+            if (!textarea || typeof textarea.selectionStart !== 'number') return null;
+            const doc = textarea.ownerDocument || document;
+            const win = doc.defaultView || window;
+            const style = win.getComputedStyle(textarea);
 
-    // Apply a color fix: replace original tokens in the editor code with newHex
-    const applyColorFix = (originalToken, newHex) => {
+            const mirror = doc.createElement('div');
+            mirror.style.position = 'absolute';
+            mirror.style.visibility = 'hidden';
+            mirror.style.whiteSpace = 'pre-wrap';
+            mirror.style.wordBreak = 'break-word';
+            mirror.style.top = '0';
+            mirror.style.left = '-9999px';
+            mirror.style.boxSizing = 'border-box';
+            mirror.style.padding = style.padding;
+            mirror.style.border = style.border;
+            mirror.style.fontFamily = style.fontFamily;
+            mirror.style.fontSize = style.fontSize;
+            mirror.style.fontWeight = style.fontWeight;
+            mirror.style.fontStyle = style.fontStyle;
+            mirror.style.letterSpacing = style.letterSpacing;
+            mirror.style.textTransform = style.textTransform;
+            mirror.style.textAlign = style.textAlign;
+            mirror.style.lineHeight = style.lineHeight;
+            mirror.style.tabSize = style.tabSize;
+            mirror.style.width = `${textarea.clientWidth}px`;
+            mirror.style.height = 'auto';
+            mirror.style.overflow = 'hidden';
+
+            const tabSize = Math.max(parseInt(style.tabSize, 10) || 2, 1);
+            const replaceTabs = (value) => value.replace(/\t/g, ' '.repeat(tabSize));
+
+            const selectionIndex = textarea.selectionStart;
+            const before = replaceTabs(textarea.value.slice(0, selectionIndex));
+            const beforeAdjusted = before.replace(/ /g, '\u00a0').replace(/\n$/g, '\n\u200b');
+            mirror.textContent = beforeAdjusted;
+
+            const caretMarker = doc.createElement('span');
+            const remainder = textarea.value.slice(selectionIndex);
+            caretMarker.textContent = remainder.length > 0 ? replaceTabs(remainder[0]) : '\u200b';
+            mirror.appendChild(caretMarker);
+
+            doc.body.appendChild(mirror);
+            const mirrorRect = mirror.getBoundingClientRect();
+            const caretRect = caretMarker.getBoundingClientRect();
+            const top = caretRect.top - mirrorRect.top;
+            const left = caretRect.left - mirrorRect.left;
+            doc.body.removeChild(mirror);
+
+            const borderLeft = parseFloat(style.borderLeftWidth) || 0;
+            const borderTop = parseFloat(style.borderTopWidth) || 0;
+            const lineHeight = parseFloat(style.lineHeight) || parseFloat(style.fontSize) || 16;
+
+            return {
+                top: top - textarea.scrollTop + borderTop,
+                left: left - textarea.scrollLeft + borderLeft,
+                height: lineHeight
+            };
+        };
+
+        // Apply a color fix: replace original tokens in the editor code with newHex
+        const applyColorFix = (originalToken, newHex, options = {}) => {
         if (!originalToken || !newHex) return;
         const src = beautifiedCode || processedSvg.code || svgInput || '';
-        const statusLabel = `Replaced ${originalToken} → ${newHex}`;
+        const normalizedNewHex = normalizeHex(newHex) || newHex;
+        const normalizedDarkHex = options && options.darkHex ? (normalizeHex(options.darkHex) || options.darkHex) : null;
+        const lintEntry = options && options.lintItem ? options.lintItem : null;
+        const targetAttrs = lintEntry && Array.isArray(lintEntry.attrs) && lintEntry.attrs.length
+            ? Array.from(new Set(lintEntry.attrs.map(a => String(a || '').toLowerCase()))).filter(Boolean)
+            : null;
+        const statusParts = [`Replaced ${originalToken} → ${normalizedNewHex}`];
+        if (normalizedDarkHex && normalizedDarkHex !== normalizedNewHex) {
+            statusParts.push(`dark → ${normalizedDarkHex}`);
+        }
+        const statusLabel = statusParts.join(' ');
+
         const highlightInBeautified = (token) => {
             const normalized = normalizeHex(token) || token;
+            if (!normalized) return;
             setActiveEditorTab('beautified');
             setHoveredColor(normalized);
             setTimeout(() => {
                 const textarea = beautifiedTextareaRef.current;
-                if (!textarea || !normalized) return;
+                if (!textarea) return;
                 const needle = normalized.toLowerCase();
                 const haystack = textarea.value ? textarea.value.toLowerCase() : '';
                 const idx = haystack.indexOf(needle);
@@ -1001,6 +889,9 @@ const buildLightDarkPreview = (svgString) => {
                 updateBeautifiedCaret();
             }, 120);
         };
+
+        const escapeForRegex = (value) => String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
         try {
             const parser = new DOMParser();
             const doc = parser.parseFromString(src, 'image/svg+xml');
@@ -1010,97 +901,151 @@ const buildLightDarkPreview = (svgString) => {
             const replaceInStyleBlocks = (token, hex) => {
                 const styleEls = doc.querySelectorAll('style');
                 let changed = false;
-                styleEls.forEach(s => {
-                    let txt = s.textContent || '';
-                    // replace CSS variable declaration --name: ...;
+                const tokenEsc = escapeForRegex(token);
+                styleEls.forEach(styleEl => {
+                    let txt = styleEl.textContent || '';
+                    let localChanged = false;
+
                     const varNameMatch = token.match(/^--[a-zA-Z0-9-_]+$/);
                     if (varNameMatch) {
-                        const re = new RegExp(`(${token})\\s*:\\s*([^;]+);`, 'g');
-                        if (re.test(txt)) {
-                            txt = txt.replace(re, `$1: ${hex};`);
-                            changed = true;
+                        const reDecl = new RegExp(`(${tokenEsc})\\s*:\\s*([^;]+);`, 'g');
+                        if (reDecl.test(txt)) {
+                            txt = txt.replace(reDecl, `$1: ${hex};`);
+                            localChanged = true;
                         }
                     }
-                    // replace var(--name) usages
-                    const varUsageMatch = token.match(/^var\((--[a-zA-Z0-9-_]+)\)$/);
+
+                    const varUsageMatch = token.match(/^var\(\s*(--[a-zA-Z0-9-_]+)\s*\)$/);
                     if (varUsageMatch) {
-                        const vname = varUsageMatch[1];
-                        const re2 = new RegExp(`var\\(\\s*${vname}\\s*\\)`, 'g');
-                        if (re2.test(txt)) {
-                            txt = txt.replace(re2, hex);
-                            changed = true;
+                        const vname = escapeForRegex(varUsageMatch[1]);
+                        const reUsage = new RegExp(`var\\(\\s*${vname}\\s*\\)`, 'g');
+                        if (reUsage.test(txt)) {
+                            txt = txt.replace(reUsage, hex);
+                            localChanged = true;
                         }
                     }
-                    // replace direct occurrences of the token in style blocks (e.g., fill: token;)
-                    const tokenEsc = token.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&');
-                    const re3 = new RegExp(`(:\\s*)${tokenEsc}((\\s*;)|\\)|\\s)`, 'g');
-                    if (re3.test(txt)) {
-                        txt = txt.replace(re3, `$1${hex}$2`);
+
+                    const reToken = new RegExp(`(:\\s*)${tokenEsc}((\\s*;)|\)|\\s)`, 'g');
+                    if (reToken.test(txt)) {
+                        txt = txt.replace(reToken, `$1${hex}$2`);
+                        localChanged = true;
+                    }
+
+                    if (localChanged) {
+                        styleEl.textContent = txt;
                         changed = true;
                     }
-                    if (changed) s.textContent = txt;
                 });
                 return changed;
             };
 
             const replaceInAttributesAndStyles = (token, hex) => {
                 const elements = doc.querySelectorAll('*');
+                const affected = [];
                 let changed = false;
+                const tokenEsc = escapeForRegex(token);
                 elements.forEach(el => {
-                    ['fill', 'stroke'].forEach(attr => {
-                        const val = el.getAttribute(attr);
-                        if (val && val.trim() === token) {
+                    const attrsToCheck = targetAttrs || ['fill', 'stroke'];
+                    attrsToCheck.forEach(attr => {
+                        const current = el.getAttribute(attr);
+                        if (current && current.trim() === token) {
                             el.setAttribute(attr, hex);
+                            affected.push({ node: el, attr });
                             changed = true;
                         }
                     });
-                    // inline style
+
                     const styleAttr = el.getAttribute('style');
-                    if (styleAttr && styleAttr.indexOf(token) !== -1) {
-                        const newStyle = styleAttr.replace(new RegExp(token.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&'), 'g'), hex);
-                        el.setAttribute('style', newStyle);
-                        changed = true;
+                    if (styleAttr && styleAttr.includes(token)) {
+                        const re = new RegExp(tokenEsc, 'g');
+                        const nextStyle = styleAttr.replace(re, hex);
+                        if (nextStyle !== styleAttr) {
+                            el.setAttribute('style', nextStyle);
+                            changed = true;
+                        }
                     }
                 });
-                return changed;
+                return { changed, affected };
             };
 
-            let didChange = false;
-            // If token is a CSS var name (--name) or var(--name) prefer updating declarations/usages
-            if (/^--[a-zA-Z0-9-_]+$/.test(originalToken) || /^var\(--[a-zA-Z0-9-_]+\)$/.test(originalToken)) {
-                didChange = replaceInStyleBlocks(originalToken, newHex) || replaceInAttributesAndStyles(originalToken, newHex);
-            } else {
-                // handle color-mix or direct tokens: update style blocks and attributes
-                didChange = replaceInStyleBlocks(originalToken, newHex) || replaceInAttributesAndStyles(originalToken, newHex);
-                // also replace direct occurrences in CSS rules not captured above
-                if (!didChange) didChange = replaceInStyleBlocks(originalToken, newHex);
-            }
-
             let updated = null;
-            if (didChange) {
-                const serializer = new XMLSerializer();
-                updated = serializer.serializeToString(doc);
-            } else {
-                // Fallback to global text replace
-                const esc = originalToken.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&');
-                const re = new RegExp(esc, 'g');
-                updated = src.replace(re, newHex);
+            let didChange = false;
+            let affectedNodes = [];
+
+            const attrResult = replaceInAttributesAndStyles(originalToken, normalizedNewHex);
+            affectedNodes = affectedNodes.concat(attrResult.affected);
+            if (attrResult.changed) didChange = true;
+
+            const styleChanged = replaceInStyleBlocks(originalToken, normalizedNewHex);
+            if (styleChanged) didChange = true;
+
+            if (normalizedDarkHex) {
+                const darkTokens = Array.isArray(lintEntry && lintEntry.darkOriginals) ? lintEntry.darkOriginals.filter(Boolean) : [];
+                const uniqueDarkTokens = Array.from(new Set(darkTokens));
+                uniqueDarkTokens.forEach(token => {
+                    const darkAttrResult = replaceInAttributesAndStyles(token, normalizedDarkHex);
+                    if (darkAttrResult.changed) didChange = true;
+                    const darkStyleChanged = replaceInStyleBlocks(token, normalizedDarkHex);
+                    if (darkStyleChanged) didChange = true;
+                });
             }
+
+            if (!didChange) {
+                const esc = escapeForRegex(originalToken);
+                const re = new RegExp(esc, 'g');
+                const fallback = src.replace(re, normalizedNewHex);
+                if (fallback === src) {
+                    throw new Error(`Unable to locate token ${originalToken}`);
+                }
+                const beautified = beautifySvg(fallback);
+                addHighlightToken(originalToken);
+                addHighlightToken(normalizedNewHex);
+                if (normalizedDarkHex) addHighlightToken(normalizedDarkHex);
+                commitBeautifiedChange(beautified, `${statusLabel} (text replace)`);
+                highlightInBeautified(normalizedNewHex);
+                return;
+            }
+
+            if (normalizedDarkHex !== null && affectedNodes.length) {
+                const perNode = new Map();
+                affectedNodes.forEach(({ node, attr }) => {
+                    if (!attr) return;
+                    if (!perNode.has(node)) perNode.set(node, new Set());
+                    perNode.get(node).add(attr);
+                });
+                perNode.forEach((attrs, node) => {
+                    attrs.forEach(attr => {
+                        if (normalizedDarkHex && normalizedDarkHex !== normalizedNewHex) {
+                            node.setAttribute(`data-dark-${attr}`, normalizedDarkHex);
+                        } else {
+                            node.removeAttribute(`data-dark-${attr}`);
+                        }
+                    });
+                });
+            }
+
+            const serializer = new XMLSerializer();
+            updated = serializer.serializeToString(doc);
 
             const beautified = beautifySvg(updated);
             addHighlightToken(originalToken);
-            addHighlightToken(newHex);
+            addHighlightToken(normalizedNewHex);
+            if (normalizedDarkHex) addHighlightToken(normalizedDarkHex);
             commitBeautifiedChange(beautified, statusLabel);
-            highlightInBeautified(newHex);
-        } catch (e) {
-            const esc = originalToken.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&');
+            highlightInBeautified(normalizedNewHex);
+            if (normalizedDarkHex && normalizedDarkHex !== normalizedNewHex) {
+                highlightInBeautified(normalizedDarkHex);
+            }
+        } catch (err) {
+            const esc = escapeForRegex(originalToken);
             const re = new RegExp(esc, 'g');
-            const updated = src.replace(re, newHex);
-            const beautified = beautifySvg(updated);
+            const fallback = src.replace(re, normalizedNewHex);
+            const beautified = beautifySvg(fallback);
             addHighlightToken(originalToken);
-            addHighlightToken(newHex);
+            addHighlightToken(normalizedNewHex);
+            if (normalizedDarkHex) addHighlightToken(normalizedDarkHex);
             commitBeautifiedChange(beautified, `${statusLabel} (fallback)`);
-            highlightInBeautified(newHex);
+            highlightInBeautified(normalizedNewHex);
         }
     };
 
@@ -1496,7 +1441,7 @@ const buildLightDarkPreview = (svgString) => {
             return;
         }
         setCaretStyle({ top: coords.top, left: coords.left, height: coords.height, visible: true });
-    }, [activeEditorTab]);
+    }, [activeEditorTab, computeCaretPosition]);
 
     // Keyboard navigation for lint list: Up/Down to move, Enter to trigger Fix
     const handleLintKeyDown = (e) => {
@@ -2329,6 +2274,7 @@ const buildLightDarkPreview = (svgString) => {
                     h('div', { class: 'preview-header' }, `Light Mode • ${activeTabMeta.label}`),
                     h('div', { class: 'preview-viewport preview-light' }, [
                          h('div', { 
+                             key: `light-${previewLightHtml.length}`,
                              style: 'width:100%; height:100%; display:flex; align-items:center; justify-content:center;',
                              dangerouslySetInnerHTML: { __html: previewLightHtml } 
                          })
@@ -2339,6 +2285,7 @@ const buildLightDarkPreview = (svgString) => {
                     h('div', { class: 'preview-header' }, `Dark Mode • ${activeTabMeta.label}`),
                      h('div', { class: 'preview-viewport preview-dark' }, [
                          h('div', { 
+                             key: `dark-${previewDarkHtml.length}`,
                              style: 'width:100%; height:100%; display:flex; align-items:center; justify-content:center;',
                              dangerouslySetInnerHTML: { __html: previewDarkHtml } 
                          })
@@ -2476,15 +2423,21 @@ const buildLightDarkPreview = (svgString) => {
                 const colorMap = new Map();
                 lintResults.forEach(it => {
                     if (it && it.type === 'color' && it.hex) {
-                        const key = it.hex.toLowerCase();
+                        const lightHex = normalizeHex(it.hex) || String(it.hex || '').toLowerCase();
+                        const darkHex = normalizeHex(it.hexDark) || normalizeHex(it.hex) || String(it.hexDark || it.hex || '').toLowerCase();
+                        const key = `${lightHex}|${darkHex}`;
                         const entry = colorMap.get(key) || {
                             type: 'color',
-                            hex: key,
+                            hex: lightHex,
+                            hexDark: darkHex,
                             heading: null,
                             target: null,
                             details: [],
                             originals: new Set(),
+                            darkOriginals: new Set(),
+                            attrs: new Set(),
                             suggested: null,
+                            suggestedDark: null,
                             fallbackMessages: [],
                             findingCount: 0,
                             isText: false,
@@ -2502,7 +2455,10 @@ const buildLightDarkPreview = (svgString) => {
                         }
                         entry.findingCount += it.findingCount || 1;
                         (it.originals || []).forEach(o => entry.originals.add(o));
+                        (it.darkOriginals || []).forEach(o => entry.darkOriginals.add(o));
+                        (it.attrs || []).forEach(a => entry.attrs.add(a));
                         if (it.suggested && !entry.suggested) entry.suggested = it.suggested;
+                        if (it.suggestedDark && !entry.suggestedDark) entry.suggestedDark = it.suggestedDark;
                         if (typeof it.isText === 'boolean') entry.isText = entry.isText || it.isText;
                         if (typeof it.isLarge === 'boolean') entry.isLarge = entry.isLarge || it.isLarge;
                         colorMap.set(key, entry);
@@ -2513,36 +2469,64 @@ const buildLightDarkPreview = (svgString) => {
                 const formatBg = (bg) => (typeof bg === 'string' ? bg.toUpperCase() : String(bg || ''));
                 const formatRatio = (val) => (typeof val === 'number' && Number.isFinite(val) ? val.toFixed(2) : 'n/a');
                 const formatLc = (val) => (typeof val === 'number' && Number.isFinite(val) ? val.toFixed(1) : 'n/a');
-                for (const v of colorMap.values()) {
-                    const hex = v.hex;
-                    const isText = v.isText;
-                    const suggestedWCAG = suggestAccessibleColor(hex, bgLight, bgDark, isText, 'wcag');
-                    const suggestedAPCA = isText ? suggestAccessibleColor(hex, bgLight, bgDark, isText, 'apca') : null;
-                    const passesBoth = (cand) => {
-                        try {
-                            const ratio = Math.min(getContrastRatio(cand, bgLight), getContrastRatio(cand, bgDark));
-                            const wcagLevel = getWCAGLevel(ratio, isText, v.isLarge);
-                            if (wcagLevel === 'Fail') return false;
-                            if (!isText) return true;
-                            const ap1 = Math.min(Math.abs(getAPCAContrast(cand, bgLight)), Math.abs(getAPCAContrast(cand, bgDark)));
-                            return ap1 >= 75;
-                        } catch (e) { return false; }
-                    };
-                    const dual = suggestDualContrastColor(hex, bgLight, bgDark, isText, v.isLarge);
-                    let chosen = null;
-                    if (dual && passesBoth(dual)) {
-                        chosen = dual;
-                    } else if (suggestedWCAG && passesBoth(suggestedWCAG)) {
-                        chosen = suggestedWCAG;
-                    } else if (suggestedAPCA && passesBoth(suggestedAPCA)) {
-                        chosen = suggestedAPCA;
-                    } else if (v.suggested && passesBoth(v.suggested)) {
-                        chosen = v.suggested;
-                    } else {
-                        chosen = dual || v.suggested || suggestedWCAG || suggestedAPCA || hex;
+
+                const meetsSingleBackground = (color, background, isText, isLarge) => {
+                    if (!color) return false;
+                    const ratio = getContrastRatio(color, background);
+                    if (getWCAGLevel(ratio, isText, isLarge) === 'Fail') return false;
+                    if (!isText) return true;
+                    return Math.abs(getAPCAContrast(color, background)) >= 75;
+                };
+
+                const refineForBackground = (baseColor, background, isText, isLarge) => {
+                    const base = normalizeHex(baseColor) || baseColor;
+                    if (meetsSingleBackground(base, background, isText, isLarge)) return base;
+                    const wcagCandidate = normalizeHex(suggestAccessibleColor(base, background, background, isText, 'wcag')) || null;
+                    if (wcagCandidate && meetsSingleBackground(wcagCandidate, background, isText, isLarge)) return wcagCandidate;
+                    if (isText) {
+                        const apcaCandidate = normalizeHex(suggestAccessibleColor(base, background, background, isText, 'apca')) || null;
+                        if (apcaCandidate && meetsSingleBackground(apcaCandidate, background, isText, isLarge)) return apcaCandidate;
                     }
-                    v.suggested = chosen;
-                    v.hex = typeof hex === 'string' ? hex.toUpperCase() : hex;
+                    return base;
+                };
+
+                const meetsPair = (lightColor, darkColor, isText, isLarge) => (
+                    meetsSingleBackground(lightColor, bgLight, isText, isLarge) &&
+                    meetsSingleBackground(darkColor, bgDark, isText, isLarge)
+                );
+
+                for (const v of colorMap.values()) {
+                    const hexLight = normalizeHex(v.hex) || v.hex;
+                    const hexDark = normalizeHex(v.hexDark) || hexLight;
+                    const isText = v.isText;
+                    const isLarge = v.isLarge;
+
+                    const dual = normalizeHex(suggestDualContrastColor(hexLight, bgLight, bgDark, isText, isLarge)) || null;
+                    let chosenLight = null;
+                    let chosenDark = null;
+
+                    if (dual && meetsPair(dual, dual, isText, isLarge)) {
+                        chosenLight = dual;
+                        chosenDark = dual;
+                    } else {
+                        const refinedLight = refineForBackground(hexLight, bgLight, isText, isLarge);
+                        const refinedDark = refineForBackground(hexDark, bgDark, isText, isLarge);
+                        if (meetsPair(refinedLight, refinedDark, isText, isLarge)) {
+                            chosenLight = refinedLight;
+                            chosenDark = refinedDark;
+                        } else if (dual && meetsSingleBackground(dual, bgLight, isText, isLarge)) {
+                            chosenLight = dual;
+                            chosenDark = refineForBackground(dual, bgDark, isText, isLarge);
+                        } else {
+                            chosenLight = refinedLight;
+                            chosenDark = refinedDark;
+                        }
+                    }
+
+                    v.suggested = chosenLight || hexLight;
+                    v.suggestedDark = chosenDark && chosenDark !== v.suggested ? chosenDark : null;
+                    v.hex = typeof hexLight === 'string' ? hexLight.toUpperCase() : hexLight;
+                    v.hexDarkDisplay = typeof hexDark === 'string' ? hexDark.toUpperCase() : hexDark;
                     const detailLines = [];
                     const wcagDetails = v.details.filter(detail => detail && detail.check === 'WCAG 2.2');
                     const apcaDetails = v.details.filter(detail => detail && detail.check === 'APCA');
@@ -2572,6 +2556,8 @@ const buildLightDarkPreview = (svgString) => {
                     v.messages = mergedLines.filter((line, idx, arr) => line && arr.indexOf(line) === idx);
                     v.message = v.messages.length ? v.messages.join(' — ') : heading;
                     v.originals = Array.from(v.originals);
+                    v.darkOriginals = Array.from(v.darkOriginals || []);
+                    v.attrs = Array.from(v.attrs || []);
                     v.findingCount = v.findingCount || v.details.length || 1;
                     delete v.fallbackMessages;
                     combined.push(v);
@@ -2586,6 +2572,14 @@ const buildLightDarkPreview = (svgString) => {
                 if (combined.length === 0) {
                     return null;
                 }
+
+                const handleLintFix = (lintEntry) => {
+                    if (!lintEntry) return;
+                    const originalToken = (lintEntry.originals && lintEntry.originals[0]) || lintEntry.hex;
+                    const lightHex = lintEntry.suggested || lintEntry.hex;
+                    const darkHex = lintEntry.suggestedDark || null;
+                    applyColorFix(originalToken, lightHex, { lintItem: lintEntry, darkHex });
+                };
 
                 const renderLintItem = (it, keyPrefix) => {
                     const baseLabel = it.hex ? `Color ${it.hex}` : 'Lint issue';
@@ -2606,10 +2600,12 @@ const buildLightDarkPreview = (svgString) => {
                         h('div', { class: 'lint-message' }, messageContent),
                         h('div', { class: 'lint-action' }, [
                             it.findingCount && it.findingCount > 1 && h('span', { class: 'lint-count' }, `${it.findingCount} findings`),
-                            h('span', { class: 'suggest' }, it.suggested || ''),
+                            it.suggestedDark
+                                ? h('span', { class: 'suggest' }, `Light: ${(it.suggested || '').toUpperCase()} / Dark: ${it.suggestedDark.toUpperCase()}`)
+                                : h('span', { class: 'suggest' }, (it.suggested || '').toUpperCase()),
                             h('button', {
                                 class: 'small',
-                                onClick: () => applyColorFix((it.originals && it.originals[0]) || it.hex, it.suggested || it.hex),
+                                onClick: () => handleLintFix(it),
                                 'aria-label': `Fix color ${it.hex || ''}`
                             }, 'Fix')
                         ])
