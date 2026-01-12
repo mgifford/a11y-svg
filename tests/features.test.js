@@ -139,4 +139,69 @@ describe('Critical Feature Tests', () => {
                 'Should request encoded sample file paths');
         });
     });
+
+    describe('Auto-fix contrast feature', () => {
+        it('should define autoFixContrast function', () => {
+            assert.ok(appJsContent.includes('const autoFixContrast'), 'autoFixContrast function should be defined');
+            assert.ok(appJsContent.includes('autoFixContrast('), 'autoFixContrast should be callable');
+        });
+
+        it('should use binary search algorithm for auto-fix', () => {
+            assert.ok(appJsContent.includes('let minL'), 'Should use minL for binary search');
+            assert.ok(appJsContent.includes('let maxL'), 'Should use maxL for binary search');
+            assert.ok(appJsContent.includes('for (let i = 0; i < 20'), 'Should iterate up to 20 times');
+            assert.ok(appJsContent.includes('rgbToHsl') && appJsContent.includes('hslToRgb'), 'Should convert between HSL and RGB');
+        });
+
+        it('should preserve hue and saturation', () => {
+            assert.ok(appJsContent.includes('fgHsl.h') || appJsContent.includes('.h:'), 'Should preserve hue');
+            assert.ok(appJsContent.includes('fgHsl.s') || appJsContent.includes('.s:'), 'Should preserve saturation');
+            assert.ok(appJsContent.includes('testL') || appJsContent.includes('l:'), 'Should modify only lightness');
+        });
+    });
+
+    describe('Unified color editing (top square sets both modes)', () => {
+        it('should have onClick handler on top color square for text', () => {
+            assert.ok(appJsContent.includes('click to set BOTH light & dark modes'), 'Should have updated tooltip');
+            assert.ok(appJsContent.includes('setColors(newColors)') && appJsContent.includes('setDarkModeColors(newDarkModeColors)'), 'Should update both color states');
+        });
+
+        it('should handle both change and input events', () => {
+            assert.ok(appJsContent.includes("addEventListener('change'"), 'Should listen for change event');
+            assert.ok(appJsContent.includes("addEventListener('input'"), 'Should listen for input event');
+            assert.ok(appJsContent.includes('{ once: true }'), 'Should use once: true to prevent duplicate handling');
+        });
+
+        it('should clean up temporary color picker element', () => {
+            assert.ok(appJsContent.includes('tempInput.style.position'), 'Should position element off-screen');
+            assert.ok(appJsContent.includes('setTimeout'), 'Should cleanup with setTimeout');
+            assert.ok(appJsContent.includes('removeChild(tempInput)'), 'Should remove temporary element');
+        });
+
+        it('should handle dark mode override preservation', () => {
+            assert.ok(appJsContent.includes('newDarkModeColors[newColor]'), 'Should set dark mode entry');
+            assert.ok(appJsContent.includes('delete newDarkModeColors[oldColor]'), 'Should clean up old color entry');
+        });
+    });
+
+    describe('Clickable contrast badges for auto-fix', () => {
+        it('should make failing badges clickable', () => {
+            assert.ok(appJsContent.includes("lightLevel === 'Fail' ? 'cursor: pointer;' : ''"), 'Light badge should show cursor pointer');
+            assert.ok(appJsContent.includes("darkLevel === 'Fail' ? 'cursor: pointer;' : ''"), 'Dark badge should show cursor pointer');
+        });
+
+        it('should call autoFixContrast on badge click', () => {
+            assert.ok(appJsContent.includes('autoFixContrast(c, bgLight'), 'Should call autoFixContrast for light mode');
+            assert.ok(appJsContent.includes('autoFixContrast(darkModeColor, bgDark'), 'Should call autoFixContrast for dark mode');
+        });
+
+        it('should preserve dark mode overrides when fixing light color', () => {
+            assert.ok(appJsContent.includes('newDarkModeColors[fixed] = newDarkModeColors[c]'), 'Should preserve override value');
+            assert.ok(appJsContent.includes('delete newDarkModeColors[c]'), 'Should clean up old entry');
+        });
+
+        it('should update tooltips to indicate click-to-fix', () => {
+            assert.ok(appJsContent.includes("' - Click to auto-fix!'"), 'Badge title should mention click-to-fix');
+        });
+    });
 });

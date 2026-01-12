@@ -2235,13 +2235,15 @@ const App = () => {
                                         tempInput.type = 'color';
                                         tempInput.value = getSafeColorPickerValue(c, '#000000');
                                         tempInput.style.position = 'absolute';
+                                        tempInput.style.left = '-9999px';
                                         tempInput.style.opacity = '0';
-                                        document.body.appendChild(tempInput);
-                                        tempInput.click();
-                                        tempInput.onchange = () => {
+                                        tempInput.style.pointerEvents = 'none';
+                                        
+                                        // Handle both change and input events to ensure capture
+                                        const handleColorChange = (e) => {
                                             const newColor = tempInput.value;
                                             const colorIndex = colors.indexOf(colorInfo);
-                                            if (colorIndex !== -1) {
+                                            if (colorIndex !== -1 && newColor) {
                                                 const oldColor = colors[colorIndex].hex;
                                                 const newColors = [...colors];
                                                 newColors[colorIndex] = { ...newColors[colorIndex], hex: newColor };
@@ -2254,8 +2256,19 @@ const App = () => {
                                                 }
                                                 setDarkModeColors(newDarkModeColors);
                                             }
-                                            document.body.removeChild(tempInput);
+                                            // Clean up after a brief delay to ensure event propagates
+                                            setTimeout(() => {
+                                                if (tempInput.parentNode) {
+                                                    document.body.removeChild(tempInput);
+                                                }
+                                            }, 100);
                                         };
+                                        
+                                        tempInput.addEventListener('change', handleColorChange, { once: true });
+                                        tempInput.addEventListener('input', handleColorChange, { once: true });
+                                        
+                                        document.body.appendChild(tempInput);
+                                        tempInput.click();
                                     }
                                 }),
                                 h('div', { 
@@ -2448,13 +2461,15 @@ const App = () => {
                                         tempInput.type = 'color';
                                         tempInput.value = getSafeColorPickerValue(c, '#ffffff');
                                         tempInput.style.position = 'absolute';
+                                        tempInput.style.left = '-9999px';
                                         tempInput.style.opacity = '0';
-                                        document.body.appendChild(tempInput);
-                                        tempInput.click();
-                                        tempInput.onchange = () => {
+                                        tempInput.style.pointerEvents = 'none';
+                                        
+                                        // Handle both change and input events to ensure capture
+                                        const handleColorChange = (e) => {
                                             const newColor = tempInput.value;
                                             const colorIndex = colors.indexOf(colorInfo);
-                                            if (colorIndex !== -1) {
+                                            if (colorIndex !== -1 && newColor) {
                                                 const oldColor = colors[colorIndex].hex;
                                                 const newColors = [...colors];
                                                 newColors[colorIndex] = { ...newColors[colorIndex], hex: newColor };
@@ -2467,8 +2482,19 @@ const App = () => {
                                                 }
                                                 setDarkModeColors(newDarkModeColors);
                                             }
-                                            document.body.removeChild(tempInput);
+                                            // Clean up after a brief delay to ensure event propagates
+                                            setTimeout(() => {
+                                                if (tempInput.parentNode) {
+                                                    document.body.removeChild(tempInput);
+                                                }
+                                            }, 100);
                                         };
+                                        
+                                        tempInput.addEventListener('change', handleColorChange, { once: true });
+                                        tempInput.addEventListener('input', handleColorChange, { once: true });
+                                        
+                                        document.body.appendChild(tempInput);
+                                        tempInput.click();
                                     }
                                 }),
                                 h('div', { 
