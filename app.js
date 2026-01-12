@@ -2138,8 +2138,9 @@ const App = () => {
                                 }),
                                 h('span', { style: 'font-size: 0.65rem; color: #666; margin-left: auto;' }, '(G)'),
                              ]),
-                             // Color inputs row
+                             // Light color row
                              h('div', { style: 'display: flex; gap: 0.25rem; align-items: center; width: 100%;' }, [
+                                h('strong', { style: 'font-size: 0.7rem; min-width: 35px;' }, 'Light:'),
                                 h('input', { 
                                        type: 'color', 
                                        style: 'width:24px; height:24px; padding:0; border:1px solid #ccc; background:none; cursor: pointer;',
@@ -2154,7 +2155,7 @@ const App = () => {
                                 }),
                                 h('input', {
                                        type: 'text',
-                                       style: 'flex: 1; min-width: 100px; padding: 0.25rem; font-family: monospace; font-size: 0.75rem; border: 1px solid var(--border);',
+                                       style: 'flex: 1; min-width: 80px; padding: 0.25rem; font-family: monospace; font-size: 0.75rem; border: 1px solid var(--border);',
                                        placeholder: 'light color',
                                        value: c,
                                        onInput: (e) => {
@@ -2167,23 +2168,24 @@ const App = () => {
                                 h('div', { style: 'margin-left:auto; display:flex; gap:2px; align-items:center;' }, [
                                     h('div', { 
                                         class: `contrast-badge ${lightLevel === 'Fail' ? 'fail' : lightLevel === 'AAA' ? 'aaa' : 'aa'}`,
-                                        title: `Light: ${lightRatio.toFixed(2)}:1 (need 3:1 for graphics)`
+                                        title: `${c} on ${bgLight}: ${lightRatio.toFixed(2)}:1 (need 3:1)`
                                     }, 
                                     lightRatio.toFixed(1))
                                 ])
                              ]),
-                             // Dark mode color row (only show if different from light)
+                             // Dark mode color row
                              h('div', { style: 'display: flex; gap: 0.25rem; align-items: center; width: 100%; border-top: 1px solid var(--border); padding-top: 0.25rem; margin-top: 0.25rem;' }, [
+                                h('strong', { style: 'font-size: 0.7rem; min-width: 35px;' }, 'Dark:'),
                                 h('input', { 
                                        type: 'color', 
                                        style: 'width:24px; height:24px; padding:0; border:1px solid #ccc; background:none; cursor: pointer;',
-                                       title: 'Dark mode color override',
+                                       title: 'Dark mode color',
                                        value: getSafeColorPickerValue(darkModeColor, getSafeColorPickerValue(c, '#ffffff')),
                                        onInput: (e) => setDarkModeColors({ ...darkModeColors, [c]: e.target.value })
                                 }),
                                 h('input', {
                                        type: 'text',
-                                       style: 'flex: 1; min-width: 100px; padding: 0.25rem; font-family: monospace; font-size: 0.75rem; border: 1px solid var(--border);',
+                                       style: 'flex: 1; min-width: 80px; padding: 0.25rem; font-family: monospace; font-size: 0.75rem; border: 1px solid var(--border);',
                                        placeholder: 'dark color',
                                        value: darkModeColor,
                                        onInput: (e) => setDarkModeColors({ ...darkModeColors, [c]: e.target.value })
@@ -2191,7 +2193,7 @@ const App = () => {
                                 h('div', { style: 'margin-left:auto; display:flex; gap:2px; align-items:center;' }, [
                                     h('div', { 
                                         class: `contrast-badge ${darkLevelDark === 'Fail' ? 'fail' : darkLevelDark === 'AAA' ? 'aaa' : 'aa'}`,
-                                        title: `Dark: ${darkRatioDark.toFixed(2)}:1 (need 3:1 for graphics)`
+                                        title: `${darkModeColor} on ${bgDark}: ${darkRatioDark.toFixed(2)}:1 (need 3:1)`
                                     }, 
                                     darkRatioDark.toFixed(1))
                                 ])
@@ -2235,21 +2237,6 @@ const App = () => {
                         } }, 'Download optimized code')
                     ])
                 ])
-            ])
-            ,
-            // Revert All Overrides
-            h('div', { class: 'sidebar-section' }, [
-                h('button', {
-                    class: 'small',
-                    onClick: () => {
-                        if (!confirm('Revert ALL color overrides? This will remove dark-mode overrides.')) return;
-                        // Move current overrides into prevOverrides so per-color revert can still work
-                        setPrevOverrides({ ...prevOverrides, ...darkModeColors });
-                        setDarkModeColors({});
-                        setA11yStatus('All overrides reverted');
-                        setTimeout(() => setA11yStatus(''), 2000);
-                    }
-                }, 'Revert All Overrides')
             ])
         ]),
         // resizer between sidebar and main content
