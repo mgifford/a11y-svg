@@ -25,6 +25,13 @@ A browser-native SVG optimization tool that prioritizes **WCAG 2.2 AA accessibil
 
 No build process required! All dependencies are loaded via CDN.
 
+### 🧪 Tests & QA
+
+- `npm test` runs the full 35-test suite (23 regression, 12 features, UI/DOM) and must pass before shipping changes.
+- `npm run qa` chains `svg:lint`, `axe`, and `pa11y` to ensure accessibility and structural integrity.
+- `npm run test:regression`, `npm run test:features`, and `npm run test:jsdom` target specific suites when iterating.
+- The browser runtime remains zero-build; CLI scripts are optional guardrails for maintainers preparing assets.
+
 ### Optional: CLI Guardrails
 
 If you want to batch-optimize or audit source SVGs outside the browser UI, run the provided scripts:
@@ -112,6 +119,12 @@ node scripts/collect_svgviewer.js
 - **Styling**: CSS with custom properties
 - **Hosting**: GitHub Pages ready
 
+## 📏 Accessibility & Optimization Specs
+
+- [SVG_ACCESSIBILITY_BEST_PRACTICES.md](SVG_ACCESSIBILITY_BEST_PRACTICES.md) — normative WCAG 2.2 AA guidance (naming, roles, contrast, dark mode)
+- [SVG_OPTIMIZATION_BEST_PRACTICES.md](SVG_OPTIMIZATION_BEST_PRACTICES.md) — edit-safe SVGO rules and verification checklist
+- All changes must preserve accessibility metadata (`<title>`, `<desc>`, `aria-*`, `role`, `viewBox`, IDs) and the zero-build guarantee
+
 ## 📝 License
 
 This program is free software: you can redistribute it and/or modify it under the terms of the **GNU Affero General Public License** as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
@@ -128,7 +141,7 @@ Contributions are welcome! Please ensure:
 - Accessibility standards (WCAG 2.2 AA) are met
 - SVG standards compliance
 
-## � File Structure
+## 🗂️ File Structure
 
 ```
 a11y-svg/
@@ -145,11 +158,13 @@ a11y-svg/
 │   ├── manifest.json   # Catalog of local SVG files
 │   └── remote/         # Remote SVG examples
 └── tests/              # Test suites
-    ├── contrast.test.js # Contrast calculation validation
-    └── ui.test.js      # (Future) UI interaction tests
+   ├── contrast.test.js   # Contrast calculation validation
+   ├── regression.test.js # Regression harness (23 tests)
+   ├── features.test.js   # Feature and integration coverage
+   └── ui.test.js         # DOM structure and JSDOM validation
 ```
 
-## �📚 Resources
+## 📚 Resources
 
 - [Accessible SVG Patterns](https://www.smashingmagazine.com/2021/05/accessible-svg-patterns-comparison/) by Carie Fisher
 - [WCAG 2.2 Guidelines](https://www.w3.org/WAI/WCAG22/quickref/)

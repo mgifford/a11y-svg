@@ -117,6 +117,11 @@ npm test  # Must pass 100% (35/35 tests)
 - Tests: All test files belong in `tests/` directory
 - Every JavaScript/HTML file must include the AGPL-3.0 license header
 
+## Documentation Expectations
+- Keep README.md aligned with these guardrails: zero-build runtime, AGPL-3.0 headers, and the current QA pipeline (`npm test` for 35/35, `npm run qa` for accessibility + linting).
+- Reference [SVG_ACCESSIBILITY_BEST_PRACTICES.md](SVG_ACCESSIBILITY_BEST_PRACTICES.md) and [SVG_OPTIMIZATION_BEST_PRACTICES.md](SVG_OPTIMIZATION_BEST_PRACTICES.md) when documenting features or prompting AI-assisted changes.
+- Note any new QA coverage (tests or scripts) in README.md so maintainers understand which checks protect a change.
+
 ## SVGO Profiles Linked To Normative Specs
 - `accessible-default` (implemented in [svgo.config.mjs](svgo.config.mjs)) maps to Sections 2 and 4 of [SVG_OPTIMIZATION_BEST_PRACTICES.md](SVG_OPTIMIZATION_BEST_PRACTICES.md). Keep `collapseGroups` and `mergePaths` disabled and numeric precision at 3 decimals to stay edit-safe.
 - `production-opt-in` (future profile) aligns with Section 3 of [SVG_OPTIMIZATION_BEST_PRACTICES.md](SVG_OPTIMIZATION_BEST_PRACTICES.md#3.-conditional-optimizations-opt-in). Enable `collapseGroups` and `mergePaths` only when the verification checklist passes and the asset is locked for downstream editing.
