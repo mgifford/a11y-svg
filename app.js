@@ -2371,7 +2371,7 @@ const App = () => {
                                        style: 'width:24px; height:24px; padding:0; border:1px solid #ccc; background:none; cursor: pointer;',
                                        title: 'Light mode color (only affects light mode)',
                                        value: getSafeColorPickerValue(c, '#000000'),
-                                       onChange: (e) => {
+                                       onInput: (e) => {
                                            const newColor = e.target.value;
                                            const colorIndex = colors.indexOf(colorInfo);
                                            if (colorIndex !== -1) {
@@ -2470,7 +2470,7 @@ const App = () => {
                                        style: 'width:24px; height:24px; padding:0; border:1px solid #ccc; background:none; cursor: pointer;',
                                        title: 'Dark mode color (only affects dark mode)',
                                        value: getSafeColorPickerValue(darkModeColor, getSafeColorPickerValue(c, '#000000')),
-                                       onChange: (e) => {
+                                       onInput: (e) => {
                                            const newDarkColor = e.target.value;
                                            const colorIndex = colors.indexOf(colorInfo);
                                            if (colorIndex !== -1) {
@@ -2655,7 +2655,7 @@ const App = () => {
                                        style: 'width:24px; height:24px; padding:0; border:1px solid #ccc; background:none; cursor: pointer;',
                                        title: 'Light mode color (only affects light mode)',
                                        value: getSafeColorPickerValue(c, '#ffffff'),
-                                       onChange: (e) => {
+                                       onInput: (e) => {
                                            const newColor = e.target.value;
                                            const colorIndex = colors.indexOf(colorInfo);
                                            if (colorIndex !== -1) {
@@ -2750,7 +2750,7 @@ const App = () => {
                                        style: 'width:24px; height:24px; padding:0; border:1px solid #ccc; background:none; cursor: pointer;',
                                        title: 'Dark mode color (only affects dark mode)',
                                        value: getSafeColorPickerValue(darkModeColor, getSafeColorPickerValue(c, '#ffffff')),
-                                       onChange: (e) => {
+                                       onInput: (e) => {
                                            const newDarkColor = e.target.value;
                                            const colorIndex = colors.indexOf(colorInfo);
                                            if (colorIndex !== -1) {
