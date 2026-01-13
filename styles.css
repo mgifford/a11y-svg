@@ -46,8 +46,7 @@
     --bg-body: #ffffff;
     --text-body: #1a1a1a;
     --primary: #005a9c;
-    --primary-text: #ffffff;
-    --border: #ced4da;
+    --primary-text: #ffffff;    --primary-light: rgba(0, 90, 156, 0.1);    --border: #ced4da;
     --card-bg: #f8f9fa;
     --focus-ring: #005a9c;
     --error: #d32f2f;
@@ -958,4 +957,92 @@ dialog h3 { margin-top: 0; }
 .color-item.is-highlighted {
     border-color: rgba(255, 152, 0, 0.8);
     box-shadow: 0 0 0 2px rgba(255, 152, 0, 0.25);
+}
+
+/* Intent toggle styling */
+.intent-toggle-group {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.intent-option {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 0.75rem;
+    border: 2px solid var(--border);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: var(--card-bg);
+}
+
+.intent-option:hover {
+    border-color: var(--primary);
+    background: var(--bg-body);
+}
+
+.intent-option.selected {
+    border-color: var(--primary);
+    background: var(--primary-light, rgba(21, 101, 192, 0.1));
+}
+
+.intent-option input[type="radio"] {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.intent-option .intent-label {
+    font-weight: 600;
+    font-size: 0.95rem;
+}
+
+.intent-option small {
+    font-size: 0.75rem;
+    color: var(--text-secondary, #666);
+    line-height: 1.3;
+}
+
+/* Resources list */
+.resources-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.resources-list li {
+    padding: 0;
+}
+
+.resources-list a {
+    color: var(--primary);
+    text-decoration: none;
+    font-size: 0.9rem;
+    display: block;
+    padding: 0.5rem;
+    border-radius: 4px;
+    transition: background 0.2s;
+}
+
+.resources-list a:hover,
+.resources-list a:focus {
+    background: var(--card-bg);
+    text-decoration: underline;
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+}
+
+/* Lint item type badges */
+.lint-item[data-type="accessible-name"] {
+    border-left: 4px solid var(--warning, #ff9800);
+}
+
+.lint-item[data-type="accessible-name"] .lint-message {
+    font-weight: 500;
 }

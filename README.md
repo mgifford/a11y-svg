@@ -69,11 +69,21 @@ Use `npm run qa` any time you add new UI features or SVG samples—the combined 
 
 ## 📋 Features
 
+### Accessible Name Detection (False-Positive-Aware)
+The linter checks for proper accessible names on meaningful SVGs:
+- **Error**: No accessible name found (no aria-label, aria-labelledby, or title)
+- **Warning**: Has title but no aria-labelledby (may not be announced by all screen readers)
+- **Pass**: Has aria-label OR aria-labelledby referencing title
+
+**Best Practice**: Use `<title>` with a unique `id`, and reference it with `aria-labelledby` on the `<svg>` element.
+
+**Avoiding False Positives**: If your SVG is decorative, select "Decorative" intent and these checks will be skipped.
+
 ### Accessibility Wizard
 Following [Carie Fisher's Accessible SVG patterns](https://www.smashingmagazine.com/2021/05/accessible-svg-patterns-comparison/):
-- **Decorative**: Apply `aria-hidden` / `role="presentation"`
-- **Informational**: Require `<title>` / `<desc>` with unique linked IDs
-- **Interactive**: Manage focus and roles for interactive elements
+- **Decorative**: Apply `aria-hidden` / `role="presentation"` (no accessible name required)
+- **Meaningful**: Combines informational + interactive - requires proper accessible name via title/aria-label
+- Smart intent detection based on presence of title/description
 
 ### Advanced Theming
 - **currentColor**: Replace hardcoded colors with `currentColor` for theme inheritance
@@ -85,6 +95,13 @@ Following [Carie Fisher's Accessible SVG patterns](https://www.smashingmagazine.
 - Interactive color picker for adjustments
 - Real-time WCAG 2.2 contrast ratio calculator
 - Test against configurable background colors
+
+### Resources
+Direct links to authoritative accessibility guidance:
+- Accessible SVG Patterns (Carie Fisher)
+- Creating Accessible SVGs (Deque)
+- Forced Colors Guide (Polypane)
+- WCAG 2.2 Quick Reference
 
 ### Output Options
 - Minified, accessible SVG code

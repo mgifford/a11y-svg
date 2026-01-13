@@ -172,7 +172,7 @@ describe('Regression Tests', () => {
         });
 
         it('lint results should include hexDark property', () => {
-            const lintSvgMatch = appJsContent.match(/const lintSvg[\s\S]{0,3000}hexDark/);
+            const lintSvgMatch = appJsContent.match(/const lintSvg[\s\S]{0,4000}hexDark/);
             assert.ok(lintSvgMatch, 'lintSvg should populate hexDark in results');
         });
 

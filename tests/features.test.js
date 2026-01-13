@@ -166,10 +166,10 @@ describe('Critical Feature Tests', () => {
             assert.ok(appJsContent.includes('setColors(newColors)') && appJsContent.includes('setDarkModeColors(newDarkModeColors)'), 'Should update both color states');
         });
 
-        it('should handle both change and input events', () => {
+        it('should handle color change event properly', () => {
             assert.ok(appJsContent.includes("addEventListener('change'"), 'Should listen for change event');
-            assert.ok(appJsContent.includes("addEventListener('input'"), 'Should listen for input event');
             assert.ok(appJsContent.includes('{ once: true }'), 'Should use once: true to prevent duplicate handling');
+            assert.ok(appJsContent.includes('applyColorFix(originalToken, newColor'), 'Should call applyColorFix to update SVG code');
         });
 
         it('should clean up temporary color picker element', () => {

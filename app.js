@@ -825,6 +825,7 @@ const App = () => {
 
             return Array.from(colorMap.values()).map(v => ({
                 hex: v.hex,
+                originalHex: v.hex,
                 hexDark: v.hexDark || null,
                 isText: v.isText,
                 isLarge: v.isLarge,
@@ -851,6 +852,37 @@ const App = () => {
                 if (!svgEl) {
                     issues.push({ level: 'error', message: 'No <svg> element found' });
                     return issues;
+                }
+
+                // Check for accessible name (only if meaningful)
+                if (intent !== 'decorative') {
+                    const ariaLabel = svgEl.getAttribute('aria-label');
+                    const ariaLabelledby = svgEl.getAttribute('aria-labelledby');
+                    const titleEl = svgEl.querySelector('title');
+                    const hasAriaLabel = ariaLabel && ariaLabel.trim().length > 0;
+                    const hasAriaLabelledby = ariaLabelledby && ariaLabelledby.trim().length > 0;
+                    const hasTitle = titleEl && titleEl.textContent && titleEl.textContent.trim().length > 0;
+                    
+                    // ERROR: No accessible name at all
+                    if (!hasAriaLabel && !hasAriaLabelledby && !hasTitle) {
+                        issues.push({
+                            level: 'error',
+                            type: 'accessible-name',
+                            message: 'Meaningful SVG missing accessible name',
+                            detail: 'Add one of: aria-label on <svg>, aria-labelledby referencing <title> id, or <title> element',
+                            suggestion: 'Add a <title> element with descriptive text, or use aria-label attribute'
+                        });
+                    }
+                    // WARNING: Has title but no aria-labelledby (works but not ideal)
+                    else if (hasTitle && !hasAriaLabelledby && !hasAriaLabel) {
+                        issues.push({
+                            level: 'warning',
+                            type: 'accessible-name',
+                            message: 'SVG has <title> but no aria-labelledby',
+                            detail: 'Some screen readers may not announce <title> without aria-labelledby linking to its id',
+                            suggestion: 'Add id to <title> and reference it with aria-labelledby on <svg>'
+                        });
+                    }
                 }
 
                 if (intent === 'informational') {
@@ -2102,43 +2134,81 @@ const App = () => {
                 h('input', { type: 'file', accept: 'image/svg+xml', ref: fileInputRef, style: 'display:none', onChange: handleFileInputChange })
             ]),
 
-            (() => {
-                const disp = computeIntentDisplay();
-                const cardClass = `sidebar-section intent-card${disp.statusClass ? ' ' + disp.statusClass : ''}`;
-                return h('div', { class: cardClass }, [
-                    h('span', { class: 'sidebar-label' }, `Accessibility Intent: ${disp.display}`),
-                    h('div', { class: 'intent-inline' }, [
-                        h('div', { class: 'intent-status' }, [
-                            h('div', { class: `status-dot ${disp.display.toLowerCase()}` }),
-                            h('span', {}, disp.display)
-                        ])
+            // Accessibility Intent Card
+            h('div', { class: 'sidebar-section intent-card' }, [
+                h('span', { class: 'sidebar-label' }, 'Accessibility Intent'),
+                h('div', { class: 'intent-toggle-group', role: 'radiogroup', 'aria-label': 'SVG accessibility intent' }, [
+                    h('label', { class: `intent-option${intent === 'decorative' ? ' selected' : ''}` }, [
+                        h('input', {
+                            type: 'radio',
+                            name: 'intent',
+                            value: 'decorative',
+                            checked: intent === 'decorative',
+                            onChange: (e) => {
+                                if (e.target.checked) {
+                                    setIntent('decorative');
+                                    setMeta({ title: '', desc: '' });
+                                    metaIsDirtyRef.current = true;
+                                    setUserHasInteracted(true);
+                                }
+                            }
+                        }),
+                        h('span', { class: 'intent-label' }, 'Decorative'),
+                        h('small', {}, 'No meaning, purely visual')
                     ]),
-                    h('div', { class: 'meta-fields' }, [
-                        h('label', { class: 'meta-field' }, [
-                            h('span', {}, 'Title'),
-                            h('input', {
-                                type: 'text',
-                                value: meta.title,
-                                placeholder: 'Add a short, unique title',
-                                onInput: (e) => handleInlineMetaChange('title', e.target.value)
-                            })
-                        ]),
-                        h('label', { class: 'meta-field' }, [
-                            h('span', {}, 'Description'),
-                            h('textarea', {
-                                rows: 2,
-                                value: meta.desc,
-                                placeholder: 'Describe the visual meaning',
-                                onInput: (e) => handleInlineMetaChange('desc', e.target.value)
-                            })
-                        ])
+                    h('label', { class: `intent-option${intent !== 'decorative' ? ' selected' : ''}` }, [
+                        h('input', {
+                            type: 'radio',
+                            name: 'intent',
+                            value: 'meaningful',
+                            checked: intent !== 'decorative',
+                            onChange: (e) => {
+                                if (e.target.checked) {
+                                    setIntent('informational');
+                                    metaIsDirtyRef.current = false;
+                                    setUserHasInteracted(true);
+                                }
+                            }
+                        }),
+                        h('span', { class: 'intent-label' }, 'Meaningful'),
+                        h('small', {}, 'Conveys information or function')
+                    ])
+                ]),
+                
+                // Show title/desc fields ONLY when meaningful
+                intent !== 'decorative' && h('div', { class: 'meta-fields', style: 'margin-top: 1rem;' }, [
+                    h('label', { class: 'meta-field' }, [
+                        h('span', {}, 'Title *'),
+                        h('input', {
+                            type: 'text',
+                            value: meta.title,
+                            placeholder: 'Short, unique title (1-3 words)',
+                            required: true,
+                            'aria-required': 'true',
+                            onInput: (e) => handleInlineMetaChange('title', e.target.value)
+                        })
                     ]),
-                    looksLikeFilename(meta.title) && h('p', { class: 'meta-hint warning' }, 'Title looks like a filename. Use human-readable words.'),
-                    looksLikeFilename(meta.desc) && h('p', { class: 'meta-hint warning' }, 'Description looks like a filename. Use a sentence.'),
-                    (!meta.title || !meta.desc) && h('p', { class: 'meta-hint' }, 'If this image conveys meaning, add a title and description so screen readers announce it.'),
-                    // ...no Save button, instant sync
-                ]);
-            })(),
+                    h('label', { class: 'meta-field' }, [
+                        h('span', {}, 'Description'),
+                        h('textarea', {
+                            rows: 3,
+                            value: meta.desc,
+                            placeholder: 'Detailed description (5+ words)',
+                            onInput: (e) => handleInlineMetaChange('desc', e.target.value)
+                        })
+                    ]),
+                    
+                    // Helpful hints
+                    (!meta.title || looksLikeFilename(meta.title)) && 
+                        h('p', { class: 'meta-hint warning' }, '⚠ Title should be human-readable, not a filename'),
+                    
+                    meta.title && !meta.desc && 
+                        h('p', { class: 'meta-hint' }, 'ℹ️ Add a description for better accessibility'),
+                        
+                    meta.title && meta.desc && countWords(meta.desc) < 5 &&
+                        h('p', { class: 'meta-hint' }, 'ℹ️ Description should be 5+ words for clarity')
+                ])
+            ]),
 
             // 1. Colors with background controls
             h('div', { class: 'sidebar-section' }, [
@@ -2227,8 +2297,11 @@ const App = () => {
                                     title: `Light background: ${bgLight}`
                                 }),
                                 h('div', { 
-                                    style: `width:24px; height:24px; background:${c}; border:2px solid #333; border-radius: 2px; cursor: pointer;`,
-                                    title: `${c} (text${isLarge ? ', large' : ''}) - click to set BOTH light & dark modes`,
+                                    style: `position: relative; width:24px; height:24px;`,
+                                }, [
+                                    h('div', { 
+                                        style: `width:24px; height:24px; background:${c}; border:2px solid #333; border-radius: 2px; cursor: pointer;`,
+                                        title: `${c} (text${isLarge ? ', large' : ''}) - click to set BOTH light & dark modes${colorInfo.originalHex && c !== colorInfo.originalHex ? ` (original: ${colorInfo.originalHex})` : ''}`,
                                     onClick: () => {
                                         // Create a temporary color input to pick color
                                         const tempInput = document.createElement('input');
@@ -2239,15 +2312,25 @@ const App = () => {
                                         tempInput.style.opacity = '0';
                                         tempInput.style.pointerEvents = 'none';
                                         
-                                        // Handle both change and input events to ensure capture
+                                        // Handle color change when user commits selection
                                         const handleColorChange = (e) => {
                                             const newColor = tempInput.value;
                                             const colorIndex = colors.indexOf(colorInfo);
-                                            if (colorIndex !== -1 && newColor) {
+                                            if (colorIndex !== -1 && newColor && newColor !== c) {
                                                 const oldColor = colors[colorIndex].hex;
+                                                const originalToken = colorInfo.originals && colorInfo.originals.length > 0 ? colorInfo.originals[0] : oldColor;
+                                                
+                                                // Apply color fix to update SVG code and preview (set both light and dark to same color)
+                                                applyColorFix(originalToken, newColor, { 
+                                                    darkHex: newColor,
+                                                    lintItem: { attrs: Array.from(colorInfo.attrs || ['fill', 'stroke']) }
+                                                });
+                                                
+                                                // Update state
                                                 const newColors = [...colors];
                                                 newColors[colorIndex] = { ...newColors[colorIndex], hex: newColor };
                                                 setColors(newColors);
+                                                
                                                 // Set dark mode to same color (unified mode)
                                                 const newDarkModeColors = { ...darkModeColors };
                                                 newDarkModeColors[newColor] = newColor;
@@ -2256,21 +2339,24 @@ const App = () => {
                                                 }
                                                 setDarkModeColors(newDarkModeColors);
                                             }
-                                            // Clean up after a brief delay to ensure event propagates
-                                            setTimeout(() => {
-                                                if (tempInput.parentNode) {
-                                                    document.body.removeChild(tempInput);
-                                                }
-                                            }, 100);
+                                            // Clean up
+                                            if (tempInput.parentNode) {
+                                                document.body.removeChild(tempInput);
+                                            }
                                         };
                                         
+                                        // Only use change event (fires when color picker closes)
                                         tempInput.addEventListener('change', handleColorChange, { once: true });
-                                        tempInput.addEventListener('input', handleColorChange, { once: true });
                                         
                                         document.body.appendChild(tempInput);
                                         tempInput.click();
                                     }
-                                }),
+                                    }),
+                                    colorInfo.originalHex && c !== colorInfo.originalHex ? h('div', {
+                                        style: `position: absolute; bottom: -2px; right: -2px; width: 8px; height: 8px; background: ${colorInfo.originalHex}; border: 1px solid #fff; border-radius: 50%; box-shadow: 0 0 2px rgba(0,0,0,0.5);`,
+                                        title: `Original: ${colorInfo.originalHex}`
+                                    }) : null
+                                ]),
                                 h('div', { 
                                     style: `width:20px; height:20px; background:${bgDark}; border:1px solid #999; border-radius: 2px;`,
                                     title: `Dark background: ${bgDark}`
@@ -2283,21 +2369,31 @@ const App = () => {
                                 h('input', { 
                                        type: 'color', 
                                        style: 'width:24px; height:24px; padding:0; border:1px solid #ccc; background:none; cursor: pointer;',
-                                       title: 'Light mode color',
+                                       title: 'Light mode color (only affects light mode)',
                                        value: getSafeColorPickerValue(c, '#000000'),
-                                       onInput: (e) => {
+                                       onChange: (e) => {
                                            const newColor = e.target.value;
                                            const colorIndex = colors.indexOf(colorInfo);
                                            if (colorIndex !== -1) {
                                                const oldColor = colors[colorIndex].hex;
+                                               const originalToken = colorInfo.originals && colorInfo.originals.length > 0 ? colorInfo.originals[0] : oldColor;
+                                               
+                                               // Apply color fix to update ONLY light mode color (no darkHex = don't touch data-dark-* attributes)
+                                               applyColorFix(originalToken, newColor, { 
+                                                   lintItem: { attrs: Array.from(colorInfo.attrs || ['fill', 'stroke']) }
+                                               });
+                                               
+                                               // Update state - only the light mode color
                                                const newColors = [...colors];
                                                newColors[colorIndex] = { ...newColors[colorIndex], hex: newColor };
                                                setColors(newColors);
-                                               // Preserve dark mode override when changing light color
-                                               if (darkModeColors[oldColor]) {
+                                               
+                                               // Update dark mode mapping key to preserve dark override with new light key
+                                               if (darkModeColors[oldColor] !== undefined) {
+                                                   const darkValue = darkModeColors[oldColor];
                                                    const newDarkModeColors = { ...darkModeColors };
-                                                   newDarkModeColors[newColor] = newDarkModeColors[oldColor];
                                                    delete newDarkModeColors[oldColor];
+                                                   newDarkModeColors[newColor] = darkValue;
                                                    setDarkModeColors(newDarkModeColors);
                                                }
                                            }
@@ -2308,19 +2404,30 @@ const App = () => {
                                        style: 'flex: 1; min-width: 80px; padding: 0.25rem; font-family: monospace; font-size: 0.75rem; border: 1px solid var(--border);',
                                        placeholder: 'light color',
                                        value: c,
-                                       onInput: (e) => {
+                                       onBlur: (e) => {
                                            const newColor = e.target.value;
+                                           if (!newColor || newColor === c) return;
                                            const colorIndex = colors.indexOf(colorInfo);
                                            if (colorIndex !== -1) {
                                                const oldColor = colors[colorIndex].hex;
+                                               const originalToken = colorInfo.originals && colorInfo.originals.length > 0 ? colorInfo.originals[0] : oldColor;
+                                               
+                                               // Apply color fix to update ONLY light mode color (no darkHex = don't touch data-dark-* attributes)
+                                               applyColorFix(originalToken, newColor, { 
+                                                   lintItem: { attrs: Array.from(colorInfo.attrs || ['fill', 'stroke']) }
+                                               });
+                                               
+                                               // Update state - only the light mode color
                                                const newColors = [...colors];
                                                newColors[colorIndex] = { ...newColors[colorIndex], hex: newColor };
                                                setColors(newColors);
-                                               // Preserve dark mode override when changing light color
-                                               if (darkModeColors[oldColor]) {
+                                               
+                                               // Update dark mode mapping key to preserve dark override with new light key
+                                               if (darkModeColors[oldColor] !== undefined) {
+                                                   const darkValue = darkModeColors[oldColor];
                                                    const newDarkModeColors = { ...darkModeColors };
-                                                   newDarkModeColors[newColor] = newDarkModeColors[oldColor];
                                                    delete newDarkModeColors[oldColor];
+                                                   newDarkModeColors[newColor] = darkValue;
                                                    setDarkModeColors(newDarkModeColors);
                                                }
                                            }
@@ -2361,13 +2468,23 @@ const App = () => {
                                 h('input', { 
                                        type: 'color', 
                                        style: 'width:24px; height:24px; padding:0; border:1px solid #ccc; background:none; cursor: pointer;',
-                                       title: 'Dark mode color',
+                                       title: 'Dark mode color (only affects dark mode)',
                                        value: getSafeColorPickerValue(darkModeColor, getSafeColorPickerValue(c, '#000000')),
-                                       onInput: (e) => {
+                                       onChange: (e) => {
+                                           const newDarkColor = e.target.value;
                                            const colorIndex = colors.indexOf(colorInfo);
                                            if (colorIndex !== -1) {
                                                const currentColor = colors[colorIndex].hex;
-                                               setDarkModeColors({ ...darkModeColors, [currentColor]: e.target.value });
+                                               const originalToken = colorInfo.originals && colorInfo.originals.length > 0 ? colorInfo.originals[0] : currentColor;
+                                               
+                                               // Apply color fix to update data-dark-* attributes
+                                               applyColorFix(originalToken, currentColor, { 
+                                                   darkHex: newDarkColor,
+                                                   lintItem: { attrs: Array.from(colorInfo.attrs || ['fill', 'stroke']) }
+                                               });
+                                               
+                                               // Update state
+                                               setDarkModeColors({ ...darkModeColors, [currentColor]: newDarkColor });
                                            }
                                        }
                                 }),
@@ -2376,11 +2493,22 @@ const App = () => {
                                        style: 'flex: 1; min-width: 80px; padding: 0.25rem; font-family: monospace; font-size: 0.75rem; border: 1px solid var(--border);',
                                        placeholder: 'dark color',
                                        value: darkModeColor,
-                                       onInput: (e) => {
+                                       onBlur: (e) => {
+                                           const newDarkColor = e.target.value;
+                                           if (!newDarkColor || newDarkColor === darkModeColor) return;
                                            const colorIndex = colors.indexOf(colorInfo);
                                            if (colorIndex !== -1) {
                                                const currentColor = colors[colorIndex].hex;
-                                               setDarkModeColors({ ...darkModeColors, [currentColor]: e.target.value });
+                                               const originalToken = colorInfo.originals && colorInfo.originals.length > 0 ? colorInfo.originals[0] : currentColor;
+                                               
+                                               // Apply color fix to update data-dark-* attributes
+                                               applyColorFix(originalToken, currentColor, { 
+                                                   darkHex: newDarkColor,
+                                                   lintItem: { attrs: Array.from(colorInfo.attrs || ['fill', 'stroke']) }
+                                               });
+                                               
+                                               // Update state
+                                               setDarkModeColors({ ...darkModeColors, [currentColor]: newDarkColor });
                                            }
                                        }
                                 }),
@@ -2407,7 +2535,7 @@ const App = () => {
                              ])
                         ]);
                     }))
-                    ]);
+                ])
                 })(),
                 
                 // Graphic Colors (show WCAG only, no APCA for graphics)
@@ -2453,8 +2581,11 @@ const App = () => {
                                     title: `Light background: ${bgLight}`
                                 }),
                                 h('div', { 
-                                    style: `width:24px; height:24px; background:${c}; border:2px solid #333; border-radius: 2px; cursor: pointer;`,
-                                    title: `${c} (graphic) - click to set BOTH light & dark modes`,
+                                    style: `position: relative; width:24px; height:24px;`,
+                                }, [
+                                    h('div', { 
+                                        style: `width:24px; height:24px; background:${c}; border:2px solid #333; border-radius: 2px; cursor: pointer;`,
+                                        title: `${c} (graphic) - click to set BOTH light & dark modes${colorInfo.originalHex && c !== colorInfo.originalHex ? ` (original: ${colorInfo.originalHex})` : ''}`,
                                     onClick: () => {
                                         // Create a temporary color input to pick color
                                         const tempInput = document.createElement('input');
@@ -2465,15 +2596,25 @@ const App = () => {
                                         tempInput.style.opacity = '0';
                                         tempInput.style.pointerEvents = 'none';
                                         
-                                        // Handle both change and input events to ensure capture
+                                        // Handle color change when user commits selection
                                         const handleColorChange = (e) => {
                                             const newColor = tempInput.value;
                                             const colorIndex = colors.indexOf(colorInfo);
-                                            if (colorIndex !== -1 && newColor) {
+                                            if (colorIndex !== -1 && newColor && newColor !== c) {
                                                 const oldColor = colors[colorIndex].hex;
+                                                const originalToken = colorInfo.originals && colorInfo.originals.length > 0 ? colorInfo.originals[0] : oldColor;
+                                                
+                                                // Apply color fix to update SVG code and preview (set both light and dark to same color)
+                                                applyColorFix(originalToken, newColor, { 
+                                                    darkHex: newColor,
+                                                    lintItem: { attrs: Array.from(colorInfo.attrs || ['fill', 'stroke']) }
+                                                });
+                                                
+                                                // Update state
                                                 const newColors = [...colors];
                                                 newColors[colorIndex] = { ...newColors[colorIndex], hex: newColor };
                                                 setColors(newColors);
+                                                
                                                 // Set dark mode to same color (unified mode)
                                                 const newDarkModeColors = { ...darkModeColors };
                                                 newDarkModeColors[newColor] = newColor;
@@ -2482,21 +2623,24 @@ const App = () => {
                                                 }
                                                 setDarkModeColors(newDarkModeColors);
                                             }
-                                            // Clean up after a brief delay to ensure event propagates
-                                            setTimeout(() => {
-                                                if (tempInput.parentNode) {
-                                                    document.body.removeChild(tempInput);
-                                                }
-                                            }, 100);
+                                            // Clean up
+                                            if (tempInput.parentNode) {
+                                                document.body.removeChild(tempInput);
+                                            }
                                         };
                                         
+                                        // Only use change event (fires when color picker closes)
                                         tempInput.addEventListener('change', handleColorChange, { once: true });
-                                        tempInput.addEventListener('input', handleColorChange, { once: true });
                                         
                                         document.body.appendChild(tempInput);
                                         tempInput.click();
                                     }
-                                }),
+                                    }),
+                                    colorInfo.originalHex && c !== colorInfo.originalHex ? h('div', {
+                                        style: `position: absolute; bottom: -2px; right: -2px; width: 8px; height: 8px; background: ${colorInfo.originalHex}; border: 1px solid #fff; border-radius: 50%; box-shadow: 0 0 2px rgba(0,0,0,0.5);`,
+                                        title: `Original: ${colorInfo.originalHex}`
+                                    }) : null
+                                ]),
                                 h('div', { 
                                     style: `width:20px; height:20px; background:${bgDark}; border:1px solid #999; border-radius: 2px;`,
                                     title: `Dark background: ${bgDark}`
@@ -2509,21 +2653,31 @@ const App = () => {
                                 h('input', { 
                                        type: 'color', 
                                        style: 'width:24px; height:24px; padding:0; border:1px solid #ccc; background:none; cursor: pointer;',
-                                       title: 'Light mode color',
+                                       title: 'Light mode color (only affects light mode)',
                                        value: getSafeColorPickerValue(c, '#ffffff'),
-                                       onInput: (e) => {
+                                       onChange: (e) => {
                                            const newColor = e.target.value;
                                            const colorIndex = colors.indexOf(colorInfo);
                                            if (colorIndex !== -1) {
                                                const oldColor = colors[colorIndex].hex;
+                                               const originalToken = colorInfo.originals && colorInfo.originals.length > 0 ? colorInfo.originals[0] : oldColor;
+                                               
+                                               // Apply color fix to update ONLY light mode color (no darkHex = don't touch data-dark-* attributes)
+                                               applyColorFix(originalToken, newColor, { 
+                                                   lintItem: { attrs: Array.from(colorInfo.attrs || ['fill', 'stroke']) }
+                                               });
+                                               
+                                               // Update state - only the light mode color
                                                const newColors = [...colors];
                                                newColors[colorIndex] = { ...newColors[colorIndex], hex: newColor };
                                                setColors(newColors);
-                                               // Preserve dark mode override when changing light color
-                                               if (darkModeColors[oldColor]) {
+                                               
+                                               // Update dark mode mapping key to preserve dark override with new light key
+                                               if (darkModeColors[oldColor] !== undefined) {
+                                                   const darkValue = darkModeColors[oldColor];
                                                    const newDarkModeColors = { ...darkModeColors };
-                                                   newDarkModeColors[newColor] = newDarkModeColors[oldColor];
                                                    delete newDarkModeColors[oldColor];
+                                                   newDarkModeColors[newColor] = darkValue;
                                                    setDarkModeColors(newDarkModeColors);
                                                }
                                            }
@@ -2534,19 +2688,30 @@ const App = () => {
                                        style: 'flex: 1; min-width: 80px; padding: 0.25rem; font-family: monospace; font-size: 0.75rem; border: 1px solid var(--border);',
                                        placeholder: 'light color',
                                        value: c,
-                                       onInput: (e) => {
+                                       onBlur: (e) => {
                                            const newColor = e.target.value;
+                                           if (!newColor || newColor === c) return;
                                            const colorIndex = colors.indexOf(colorInfo);
                                            if (colorIndex !== -1) {
                                                const oldColor = colors[colorIndex].hex;
+                                               const originalToken = colorInfo.originals && colorInfo.originals.length > 0 ? colorInfo.originals[0] : oldColor;
+                                               
+                                               // Apply color fix to update ONLY light mode color (no darkHex = don't touch data-dark-* attributes)
+                                               applyColorFix(originalToken, newColor, { 
+                                                   lintItem: { attrs: Array.from(colorInfo.attrs || ['fill', 'stroke']) }
+                                               });
+                                               
+                                               // Update state - only the light mode color
                                                const newColors = [...colors];
                                                newColors[colorIndex] = { ...newColors[colorIndex], hex: newColor };
                                                setColors(newColors);
-                                               // Preserve dark mode override when changing light color
-                                               if (darkModeColors[oldColor]) {
+                                               
+                                               // Update dark mode mapping key to preserve dark override with new light key
+                                               if (darkModeColors[oldColor] !== undefined) {
+                                                   const darkValue = darkModeColors[oldColor];
                                                    const newDarkModeColors = { ...darkModeColors };
-                                                   newDarkModeColors[newColor] = newDarkModeColors[oldColor];
                                                    delete newDarkModeColors[oldColor];
+                                                   newDarkModeColors[newColor] = darkValue;
                                                    setDarkModeColors(newDarkModeColors);
                                                }
                                            }
@@ -2583,13 +2748,23 @@ const App = () => {
                                 h('input', { 
                                        type: 'color', 
                                        style: 'width:24px; height:24px; padding:0; border:1px solid #ccc; background:none; cursor: pointer;',
-                                       title: 'Dark mode color',
+                                       title: 'Dark mode color (only affects dark mode)',
                                        value: getSafeColorPickerValue(darkModeColor, getSafeColorPickerValue(c, '#ffffff')),
-                                       onInput: (e) => {
+                                       onChange: (e) => {
+                                           const newDarkColor = e.target.value;
                                            const colorIndex = colors.indexOf(colorInfo);
                                            if (colorIndex !== -1) {
                                                const currentColor = colors[colorIndex].hex;
-                                               setDarkModeColors({ ...darkModeColors, [currentColor]: e.target.value });
+                                               const originalToken = colorInfo.originals && colorInfo.originals.length > 0 ? colorInfo.originals[0] : currentColor;
+                                               
+                                               // Apply color fix to update data-dark-* attributes
+                                               applyColorFix(originalToken, currentColor, { 
+                                                   darkHex: newDarkColor,
+                                                   lintItem: { attrs: Array.from(colorInfo.attrs || ['fill', 'stroke']) }
+                                               });
+                                               
+                                               // Update state
+                                               setDarkModeColors({ ...darkModeColors, [currentColor]: newDarkColor });
                                            }
                                        }
                                 }),
@@ -2598,11 +2773,22 @@ const App = () => {
                                        style: 'flex: 1; min-width: 80px; padding: 0.25rem; font-family: monospace; font-size: 0.75rem; border: 1px solid var(--border);',
                                        placeholder: 'dark color',
                                        value: darkModeColor,
-                                       onInput: (e) => {
+                                       onBlur: (e) => {
+                                           const newDarkColor = e.target.value;
+                                           if (!newDarkColor || newDarkColor === darkModeColor) return;
                                            const colorIndex = colors.indexOf(colorInfo);
                                            if (colorIndex !== -1) {
                                                const currentColor = colors[colorIndex].hex;
-                                               setDarkModeColors({ ...darkModeColors, [currentColor]: e.target.value });
+                                               const originalToken = colorInfo.originals && colorInfo.originals.length > 0 ? colorInfo.originals[0] : currentColor;
+                                               
+                                               // Apply color fix to update data-dark-* attributes
+                                               applyColorFix(originalToken, currentColor, { 
+                                                   darkHex: newDarkColor,
+                                                   lintItem: { attrs: Array.from(colorInfo.attrs || ['fill', 'stroke']) }
+                                               });
+                                               
+                                               // Update state
+                                               setDarkModeColors({ ...darkModeColors, [currentColor]: newDarkColor });
                                            }
                                        }
                                 }),
@@ -2625,7 +2811,7 @@ const App = () => {
                              ])
                         ]);
                     }))
-                    ]);
+                ])
                 })()
             ]),
             // 3. Finalize (Accordion)
@@ -2660,6 +2846,50 @@ const App = () => {
                             setA11yStatus('Downloaded optimized SVG');
                             setTimeout(() => setA11yStatus(''), 1200);
                         } }, 'Download optimized code')
+                    ])
+                ])
+            ]),
+            
+            // Resources Accordion
+            h('div', { class: 'accordion', role: 'region', 'aria-expanded': accordionState.resources ? 'true' : 'false' }, [
+                h('div', { class: 'accordion-header', onClick: (e) => {
+                    const next = { ...accordionState, resources: !accordionState.resources };
+                    setAccordionState(next);
+                    try { localStorage.setItem('accordionState', JSON.stringify(next)); } catch (err) {}
+                } }, [
+                    h('span', {}, 'Resources'),
+                    h('span', { class: 'chev' }, '▸')
+                ]),
+                h('div', { class: 'accordion-content' }, [
+                    h('ul', { class: 'resources-list' }, [
+                        h('li', {}, [
+                            h('a', {
+                                href: 'https://www.smashingmagazine.com/2021/05/accessible-svg-patterns-comparison/',
+                                target: '_blank',
+                                rel: 'noopener noreferrer'
+                            }, 'Accessible SVG Patterns (Carie Fisher)')
+                        ]),
+                        h('li', {}, [
+                            h('a', {
+                                href: 'https://www.deque.com/blog/creating-accessible-svgs/',
+                                target: '_blank',
+                                rel: 'noopener noreferrer'
+                            }, 'Creating Accessible SVGs (Deque)')
+                        ]),
+                        h('li', {}, [
+                            h('a', {
+                                href: 'https://polypane.app/blog/forced-colors-explained-a-practical-guide/',
+                                target: '_blank',
+                                rel: 'noopener noreferrer'
+                            }, 'Forced Colors Guide (Polypane)')
+                        ]),
+                        h('li', {}, [
+                            h('a', {
+                                href: 'https://www.w3.org/WAI/WCAG22/quickref/',
+                                target: '_blank',
+                                rel: 'noopener noreferrer'
+                            }, 'WCAG 2.2 Quick Reference')
+                        ])
                     ])
                 ])
             ])
@@ -2995,6 +3225,7 @@ const App = () => {
                     return h('div', {
                         key: `${keyPrefix}-${it.hex || it.message || 'lint'}`,
                         class: 'lint-item',
+                        'data-type': it.type || 'general',
                         role: 'listitem',
                         tabIndex: 0,
                         'aria-label': accessibleLabel,
@@ -3003,10 +3234,10 @@ const App = () => {
                         h('div', { class: 'lint-message' }, messageContent),
                         h('div', { class: 'lint-action' }, [
                             it.findingCount && it.findingCount > 1 && h('span', { class: 'lint-count' }, `${it.findingCount} findings`),
-                            it.suggestedDark
+                            it.type === 'color' && (it.suggestedDark
                                 ? h('span', { class: 'suggest' }, `Light: ${(it.suggested || '').toUpperCase()} / Dark: ${it.suggestedDark.toUpperCase()}`)
-                                : h('span', { class: 'suggest' }, (it.suggested || '').toUpperCase()),
-                            h('button', {
+                                : h('span', { class: 'suggest' }, (it.suggested || '').toUpperCase())),
+                            it.type === 'color' && h('button', {
                                 class: 'small',
                                 onClick: () => handleLintFix(it),
                                 'aria-label': `Fix color ${it.hex || ''}`
