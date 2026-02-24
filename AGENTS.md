@@ -12,10 +12,11 @@ Maintain and evolve a browser-native SVG optimization tool that prioritizes WCAG
 - Preserve metadata exactly as required by the normative accessibility spec; defer to automated helpers only when they satisfy those clauses.
 
 ## Normative References & Future Prompts
+- **[ACCESSIBILITY.md](ACCESSIBILITY.md)** — project-wide accessibility commitment, testing requirements, and contributor guidelines.
 - [SVG_ACCESSIBILITY_BEST_PRACTICES.md](SVG_ACCESSIBILITY_BEST_PRACTICES.md) — normative accessibility specification for authoring, optimization, linting, and the "Generate prompt to improve this image" workflow.
 - [SVG_OPTIMIZATION_BEST_PRACTICES.md](SVG_OPTIMIZATION_BEST_PRACTICES.md) — normative optimization specification governing default transforms, optional compression, and edit-safe guarantees.
 
-Both documents supply authoritative requirements. Treat them as source-of-truth for any feature, regression test, or AI-assist prompt. The future "Generate prompt to improve this image" flow MUST quote the relevant clauses from these references when proposing changes.
+All three documents supply authoritative requirements. Treat them as source-of-truth for any feature, regression test, or AI-assist prompt. The future "Generate prompt to improve this image" flow MUST quote the relevant clauses from these references when proposing changes.
 
 ## Design Philosophy
 - Utility: Optimization must not strip accessibility tags (`<title>`, `<desc>`, `aria-*`).

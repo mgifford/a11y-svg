@@ -138,6 +138,7 @@ node scripts/collect_svgviewer.js
 
 ## 📏 Accessibility & Optimization Specs
 
+- **[ACCESSIBILITY.md](ACCESSIBILITY.md)** — our commitment to WCAG 2.2 AA, testing requirements, and contributor guidelines
 - [SVG_ACCESSIBILITY_BEST_PRACTICES.md](SVG_ACCESSIBILITY_BEST_PRACTICES.md) — normative WCAG 2.2 AA guidance (naming, roles, contrast, dark mode)
 - [SVG_OPTIMIZATION_BEST_PRACTICES.md](SVG_OPTIMIZATION_BEST_PRACTICES.md) — edit-safe SVGO rules and verification checklist
 - All changes must preserve accessibility metadata (`<title>`, `<desc>`, `aria-*`, `role`, `viewBox`, IDs) and the zero-build guarantee
@@ -155,8 +156,9 @@ All source files include the AGPL-3.0 license header as required.
 Contributions are welcome! Please ensure:
 - All code maintains AGPL-3.0 license headers
 - Zero build step requirement is preserved
-- Accessibility standards (WCAG 2.2 AA) are met
+- Accessibility standards (WCAG 2.2 AA) are met — see [ACCESSIBILITY.md](ACCESSIBILITY.md)
 - SVG standards compliance
+- All tests pass (`npm test` and `npm run qa`)
 
 ## 🗂️ File Structure
 
@@ -167,6 +169,7 @@ a11y-svg/
 ├── styles.css          # Application styles with theme support
 ├── package.json        # Dev dependencies for QA scripts
 ├── svgo.config.mjs     # SVGO configuration preserving a11y attributes
+├── ACCESSIBILITY.md    # Accessibility commitment and guidelines
 ├── AGENTS.md           # AI agent instructions for development
 ├── README.md           # This file
 ├── scripts/            # Helper scripts
