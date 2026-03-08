@@ -16,8 +16,8 @@
     "qa": "npm run test && npm run svg:lint && npm run axe && npm run pa11y"
   },
   "devDependencies": {
-    "jsdom": "^22.1.0",
-    "svgo": "^3.3.2",
+    "jsdom": "^28.1.0",
+    "svgo": "^3.3.3",
     "@axe-core/cli": "^4.9.0",
     "pa11y": "^9.0.1",
     "svglint": "^4.1.2"
