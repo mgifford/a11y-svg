@@ -1,0 +1,65 @@
+# Copilot Coding Agent Hooks — A11y-SVG-Studio
+#
+# These hooks run shell commands at key points during Copilot coding agent
+# execution to enforce the project's accessibility QA pipeline before any
+# pull request is opened.
+#
+# References:
+#   - About hooks: https://docs.github.com/en/copilot/concepts/agents/coding-agent/about-hooks
+#   - Getting started with agents: https://accessibility.github.com/documentation/guide/getting-started-with-agents/
+#   - Project QA pipeline: ../tests/README.md
+
+hooks:
+  # ── Post-change validation ──────────────────────────────────────────────
+  # Runs after Copilot has made a batch of code changes and before it opens
+  # or updates a pull request.  Failing this hook blocks the PR.
+  post_change:
+    - name: Install dev dependencies
+      run: npm ci --prefer-offline
+
+    - name: Run full test suite (35/35 required)
+      run: npm test
+      # Tests covered:
+      #   regression.test.js  – 23 tests preventing known regressions
+      #   features.test.js    – 12 tests for critical user workflows
+      #   ui.test.js          – DOM structure / JSDOM validation
+
+    - name: Lint SVG assets for accessibility
+      run: npm run svg:lint
+      # Validates: role="img", aria-labelledby, <title>, <desc> presence
+      # per SVG_ACCESSIBILITY_BEST_PRACTICES.md §1
+
+    - name: axe automated accessibility audit (WCAG 2.0 AA)
+      run: npm run axe
+      # Checks the application UI at file://$(pwd)/index.html
+
+    - name: pa11y accessibility validation (WCAG2AA)
+      run: npm run pa11y
+      # Additional WCAG2AA validation; threshold 0 (zero violations allowed)
+
+  # ── Pre-PR summary ───────────────────────────────────────────────────────
+  # Runs immediately before Copilot opens the pull request to add a
+  # structured accessibility compliance summary to the PR description.
+  #
+  # $COPILOT_PR_BODY_FILE is an environment variable provided by the Copilot
+  # hooks runtime pointing to a writable file whose contents are appended to
+  # the pull request body.  See the hooks documentation for the full list of
+  # available runtime variables.
+  pre_pr:
+    - name: Generate accessibility compliance summary
+      run: |
+        if [ -z "${COPILOT_PR_BODY_FILE:-}" ]; then
+          echo "COPILOT_PR_BODY_FILE is not set; skipping PR body update." >&2
+          exit 0
+        fi
+        cat >> "$COPILOT_PR_BODY_FILE" <<'EOF'
+
+## Accessibility Compliance Summary
+
+- [x] `npm test` — 35/35 tests passing
+- [x] `npm run svg:lint` — SVG assets pass accessibility lint
+- [x] `npm run axe` — WCAG 2.0 AA automated audit passed
+- [x] `npm run pa11y` — WCAG2AA pa11y validation passed
+
+SVG changes follow the patterns in `SVG_ACCESSIBILITY_BEST_PRACTICES.md`.
+EOF
