@@ -20,10 +20,11 @@ We believe **accessibility is a subset of quality**. A11y-SVG-Studio is designed
 | :--- | :--- |
 | **WCAG Level** | 2.2 AA (Target & Maintained) |
 | **Test Suite** | ✅ 35/35 tests passing (23 regression, 12 features) |
-| **Automated Testing** | axe-core (WCAG 2.2 AA), Pa11y (WCAG 2.0 AA) |
+| **Automated Testing** | axe-core (WCAG 2.2 AA), Pa11y (WCAG 2.0 AA), [github/accessibility-scanner](https://github.com/github/accessibility-scanner) (GitHub Pages) |
 | **Test Coverage** | `npm test` + `npm run qa` required before merge |
 | **Known Issues** | [View open accessibility issues](https://github.com/mgifford/a11y-svg/issues?q=is%3Aissue+is%3Aopen+label%3Aaccessibility) |
 | **CI/CD Enforcement** | ✅ Strict (PRs fail if tests don't pass) |
+| **GitHub Pages Scanning** | ✅ After every deploy + monthly (via `github/accessibility-scanner`) |
 
 ## 3. Technical Architecture for Accessibility
 
@@ -120,6 +121,20 @@ Our automated testing covers:
 - Dark mode preservation
 - Hook scoping and function boundaries
 - Preview rendering and event flow
+
+### GitHub Pages Live Scanning
+
+The [`.github/workflows/a11y-scan.yml`](.github/workflows/a11y-scan.yml) workflow runs
+[github/accessibility-scanner](https://github.com/github/accessibility-scanner) against the
+live GitHub Pages site (`https://mgifford.github.io/a11y-svg/`):
+
+- **On every deploy** — triggered automatically after a successful "Deploy to GitHub Pages" workflow run.
+- **Monthly** — scheduled on the first of each month at 00:00 UTC.
+
+When issues are found the scanner creates actionable GitHub Issues and, when GitHub Copilot is
+available, assigns them for AI-powered fix suggestions. A `GH_TOKEN` repository secret (fine-grained
+PAT with `actions: write`, `contents: write`, `issues: write`, `pull-requests: write` scopes) is
+required for the scanner to file and track those issues.
 
 ## 6. Contributor Guidelines
 

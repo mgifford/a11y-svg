@@ -1,0 +1,46 @@
+name: Accessibility Scanner
+
+# Runs axe-core scanning via github/accessibility-scanner on:
+#   1. Every successful deploy to GitHub Pages (on pushes to main)
+#   2. Monthly, on the first of the month at 00:00 UTC
+#
+# Prerequisites:
+#   - Add a repository secret called GH_TOKEN (fine-grained PAT) with:
+#       actions: write, contents: write, issues: write, pull-requests: write
+#   - GitHub Issues must be enabled for this repository
+#
+# See https://github.com/github/accessibility-scanner for full documentation.
+
+on:
+  workflow_run:
+    workflows: ["Deploy to GitHub Pages"]
+    types: [completed]
+    branches: [main]
+  schedule:
+    # First day of every month at 00:00 UTC
+    - cron: '0 0 1 * *'
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    name: Scan GitHub Pages for accessibility issues
+    runs-on: ubuntu-latest
+    # For workflow_run events, only proceed when the deployment succeeded.
+    if: >
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    steps:
+      - name: Run accessibility scanner
+        uses: github/accessibility-scanner@v2
+        with:
+          urls: |
+            https://mgifford.github.io/a11y-svg/
+          repository: mgifford/a11y-svg
+          token: ${{ secrets.GH_TOKEN }}
+          cache_key: a11y-svg-github-pages
+          # Set to true if you don't have GitHub Copilot; scanner will still
+          # create issues but won't assign them for AI-powered fix suggestions.
+          skip_copilot_assignment: false
+          include_screenshots: true
