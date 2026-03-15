@@ -2085,6 +2085,23 @@ const App = () => {
     const previewDarkHtml = previewForActiveTab.dark || '';
     const activeTabMeta = editorTabs.find(tab => tab.id === activeEditorTab) || editorTabs[0];
 
+    // Helper: get the effective dark-mode color to preserve when changing light mode
+    const getPreservedDark = (colorInfo, oldColor) =>
+        darkModeColors[oldColor] !== undefined ? darkModeColors[oldColor] : (colorInfo.hexDark || oldColor);
+
+    // Helper: re-key darkModeColors when the light-mode hex changes
+    const reKeyDarkMode = (oldColor, newColor, preservedDark) => {
+        const next = { ...darkModeColors };
+        delete next[oldColor];
+        if (preservedDark !== newColor) next[newColor] = preservedDark;
+        return next;
+    };
+
+    // Shared styles for the dark-mode independent-color indicator in the preview row
+    const darkSwatchStyle = (color) =>
+        `width:16px; height:16px; background:${color}; border:2px solid #555; border-radius: 2px; flex-shrink: 0;`;
+    const darkDiffersBadgeStyle = 'font-size: 0.6rem; color: #888; flex-shrink: 0;';
+
     return h('div', { class: 'app-layout' }, [
         
         // --- Sidebar ---
@@ -2361,6 +2378,15 @@ const App = () => {
                                     style: `width:20px; height:20px; background:${bgDark}; border:1px solid #999; border-radius: 2px;`,
                                     title: `Dark background: ${bgDark}`
                                 }),
+                                normalizeHex(darkModeColor) !== normalizeHex(c) ? h('div', {
+                                    style: darkSwatchStyle(darkModeColor),
+                                    title: `Dark mode: ${darkModeColor} (independent from light — use Dark: row to edit)`
+                                }) : null,
+                                normalizeHex(darkModeColor) !== normalizeHex(c) ? h('span', {
+                                    'aria-label': 'light and dark colors differ',
+                                    style: darkDiffersBadgeStyle,
+                                    title: 'Light and dark mode colors are independent'
+                                }, '≠') : null,
                                 h('span', { style: 'font-size: 0.65rem; color: #666; margin-left: auto;' }, `(T${isLarge ? 'L' : ''})`),
                              ]),
                              // Light color row
@@ -2378,8 +2404,9 @@ const App = () => {
                                                const oldColor = colors[colorIndex].hex;
                                                const originalToken = colorInfo.originals && colorInfo.originals.length > 0 ? colorInfo.originals[0] : oldColor;
                                                
-                                               // Apply color fix to update ONLY light mode color (no darkHex = don't touch data-dark-* attributes)
+                                               const preservedDark = getPreservedDark(colorInfo, oldColor);
                                                applyColorFix(originalToken, newColor, { 
+                                                   darkHex: preservedDark,
                                                    lintItem: { attrs: Array.from(colorInfo.attrs || ['fill', 'stroke']) }
                                                });
                                                
@@ -2387,15 +2414,7 @@ const App = () => {
                                                const newColors = [...colors];
                                                newColors[colorIndex] = { ...newColors[colorIndex], hex: newColor };
                                                setColors(newColors);
-                                               
-                                               // Update dark mode mapping key to preserve dark override with new light key
-                                               if (darkModeColors[oldColor] !== undefined) {
-                                                   const darkValue = darkModeColors[oldColor];
-                                                   const newDarkModeColors = { ...darkModeColors };
-                                                   delete newDarkModeColors[oldColor];
-                                                   newDarkModeColors[newColor] = darkValue;
-                                                   setDarkModeColors(newDarkModeColors);
-                                               }
+                                               setDarkModeColors(reKeyDarkMode(oldColor, newColor, preservedDark));
                                            }
                                        }
                                 }),
@@ -2412,8 +2431,9 @@ const App = () => {
                                                const oldColor = colors[colorIndex].hex;
                                                const originalToken = colorInfo.originals && colorInfo.originals.length > 0 ? colorInfo.originals[0] : oldColor;
                                                
-                                               // Apply color fix to update ONLY light mode color (no darkHex = don't touch data-dark-* attributes)
+                                               const preservedDark = getPreservedDark(colorInfo, oldColor);
                                                applyColorFix(originalToken, newColor, { 
+                                                   darkHex: preservedDark,
                                                    lintItem: { attrs: Array.from(colorInfo.attrs || ['fill', 'stroke']) }
                                                });
                                                
@@ -2421,15 +2441,7 @@ const App = () => {
                                                const newColors = [...colors];
                                                newColors[colorIndex] = { ...newColors[colorIndex], hex: newColor };
                                                setColors(newColors);
-                                               
-                                               // Update dark mode mapping key to preserve dark override with new light key
-                                               if (darkModeColors[oldColor] !== undefined) {
-                                                   const darkValue = darkModeColors[oldColor];
-                                                   const newDarkModeColors = { ...darkModeColors };
-                                                   delete newDarkModeColors[oldColor];
-                                                   newDarkModeColors[newColor] = darkValue;
-                                                   setDarkModeColors(newDarkModeColors);
-                                               }
+                                               setDarkModeColors(reKeyDarkMode(oldColor, newColor, preservedDark));
                                            }
                                        }
                                 }),
@@ -2645,6 +2657,15 @@ const App = () => {
                                     style: `width:20px; height:20px; background:${bgDark}; border:1px solid #999; border-radius: 2px;`,
                                     title: `Dark background: ${bgDark}`
                                 }),
+                                normalizeHex(darkModeColor) !== normalizeHex(c) ? h('div', {
+                                    style: darkSwatchStyle(darkModeColor),
+                                    title: `Dark mode: ${darkModeColor} (independent from light — use Dark: row to edit)`
+                                }) : null,
+                                normalizeHex(darkModeColor) !== normalizeHex(c) ? h('span', {
+                                    'aria-label': 'light and dark colors differ',
+                                    style: darkDiffersBadgeStyle,
+                                    title: 'Light and dark mode colors are independent'
+                                }, '≠') : null,
                                 h('span', { style: 'font-size: 0.65rem; color: #666; margin-left: auto;' }, '(G)'),
                              ]),
                              // Light color row
@@ -2662,8 +2683,9 @@ const App = () => {
                                                const oldColor = colors[colorIndex].hex;
                                                const originalToken = colorInfo.originals && colorInfo.originals.length > 0 ? colorInfo.originals[0] : oldColor;
                                                
-                                               // Apply color fix to update ONLY light mode color (no darkHex = don't touch data-dark-* attributes)
+                                               const preservedDark = getPreservedDark(colorInfo, oldColor);
                                                applyColorFix(originalToken, newColor, { 
+                                                   darkHex: preservedDark,
                                                    lintItem: { attrs: Array.from(colorInfo.attrs || ['fill', 'stroke']) }
                                                });
                                                
@@ -2671,15 +2693,7 @@ const App = () => {
                                                const newColors = [...colors];
                                                newColors[colorIndex] = { ...newColors[colorIndex], hex: newColor };
                                                setColors(newColors);
-                                               
-                                               // Update dark mode mapping key to preserve dark override with new light key
-                                               if (darkModeColors[oldColor] !== undefined) {
-                                                   const darkValue = darkModeColors[oldColor];
-                                                   const newDarkModeColors = { ...darkModeColors };
-                                                   delete newDarkModeColors[oldColor];
-                                                   newDarkModeColors[newColor] = darkValue;
-                                                   setDarkModeColors(newDarkModeColors);
-                                               }
+                                               setDarkModeColors(reKeyDarkMode(oldColor, newColor, preservedDark));
                                            }
                                        }
                                 }),
@@ -2696,8 +2710,9 @@ const App = () => {
                                                const oldColor = colors[colorIndex].hex;
                                                const originalToken = colorInfo.originals && colorInfo.originals.length > 0 ? colorInfo.originals[0] : oldColor;
                                                
-                                               // Apply color fix to update ONLY light mode color (no darkHex = don't touch data-dark-* attributes)
+                                               const preservedDark = getPreservedDark(colorInfo, oldColor);
                                                applyColorFix(originalToken, newColor, { 
+                                                   darkHex: preservedDark,
                                                    lintItem: { attrs: Array.from(colorInfo.attrs || ['fill', 'stroke']) }
                                                });
                                                
@@ -2705,15 +2720,7 @@ const App = () => {
                                                const newColors = [...colors];
                                                newColors[colorIndex] = { ...newColors[colorIndex], hex: newColor };
                                                setColors(newColors);
-                                               
-                                               // Update dark mode mapping key to preserve dark override with new light key
-                                               if (darkModeColors[oldColor] !== undefined) {
-                                                   const darkValue = darkModeColors[oldColor];
-                                                   const newDarkModeColors = { ...darkModeColors };
-                                                   delete newDarkModeColors[oldColor];
-                                                   newDarkModeColors[newColor] = darkValue;
-                                                   setDarkModeColors(newDarkModeColors);
-                                               }
+                                               setDarkModeColors(reKeyDarkMode(oldColor, newColor, preservedDark));
                                            }
                                        }
                                 }),
