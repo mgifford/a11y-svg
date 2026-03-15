@@ -2222,9 +2222,9 @@ const App = () => {
                 ])
             ]),
 
-            // 1. Colors with background controls
+            // Background Colors with background controls
             h('div', { class: 'sidebar-section' }, [
-                h('span', { class: 'sidebar-label' }, `1. Colors${colors.length > 0 ? ` (${colors.length})` : ''}`),
+                h('span', { class: 'sidebar-label' }, `Background Colors${colors.length > 0 ? ` (${colors.length})` : ''}`),
                 h('div', { style: 'margin-top: 0.5rem;' }, [
                     h('div', { style: 'display: flex; gap: 0.5rem; align-items: center; margin-bottom: 0.5rem;' }, [
                         h('label', { style: 'font-size: 0.85rem; min-width: 60px;' }, 'Light:'),
