@@ -995,6 +995,11 @@ dialog h3 { margin-top: 0; }
     pointer-events: none;
 }
 
+.intent-option:has(input[type="radio"]:focus-visible) {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+}
+
 .intent-option .intent-label {
     font-weight: 600;
     font-size: 0.95rem;
