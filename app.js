@@ -512,11 +512,6 @@ const App = () => {
         const lintListRef = useRef(null);
         const fileInputRef = useRef(null);
         const [caretStyle, setCaretStyle] = useState({ top: 0, left: 0, height: 18, visible: false });
-        const [accordionState, setAccordionState] = useState(() => {
-            try {
-                return JSON.parse(localStorage.getItem('accordionState') || '{"finalize":true}');
-            } catch (e) { return { finalize: true }; }
-        });
         const [theme, setTheme] = useState(() => {
             try { return localStorage.getItem('theme') || 'system'; } catch (e) { return 'system'; }
         });
@@ -2821,82 +2816,64 @@ const App = () => {
                 ])
                 })()
             ]),
-            // 3. Finalize (Accordion)
-            h('div', { class: 'accordion', role: 'region', 'aria-expanded': accordionState.finalize ? 'true' : 'false', id: 'finalize-accordion' }, [
-                h('div', { class: 'accordion-header', onClick: (e) => {
-                    const next = { ...accordionState, finalize: !accordionState.finalize };
-                    setAccordionState(next);
-                    try { localStorage.setItem('accordionState', JSON.stringify(next)); } catch (err) {}
-                } }, [
-                    h('span', {}, 'Finalize'),
-                    h('span', { class: 'chev' }, '▸')
-                ]),
-                h('div', { class: 'accordion-content' }, [
-                    h('div', { style: 'display:flex; gap:0.5rem; align-items:center; justify-content:flex-start;' }, [
-                        h('button', { class: 'small', onClick: () => {
-                            if (!processedSvg || !processedSvg.code) return setA11yStatus('No optimized code to copy');
-                            navigator.clipboard.writeText(processedSvg.code);
-                            setA11yStatus('Optimized code copied');
-                            setTimeout(() => setA11yStatus(''), 1200);
-                        } }, 'Copy optimized code'),
-                        h('button', { class: 'small secondary', onClick: () => {
-                            if (!processedSvg || !processedSvg.code) return setA11yStatus('No optimized code to download');
-                            const blob = new Blob([processedSvg.code], { type: 'image/svg+xml' });
-                            const url = URL.createObjectURL(blob);
-                            const a = document.createElement('a');
-                            a.href = url;
-                            a.download = (currentFileName && currentFileName.endsWith('.svg')) ? currentFileName.replace(/\.svg$/, '.optimized.svg') : 'optimized.svg';
-                            document.body.appendChild(a);
-                            a.click();
-                            a.remove();
-                            URL.revokeObjectURL(url);
-                            setA11yStatus('Downloaded optimized SVG');
-                            setTimeout(() => setA11yStatus(''), 1200);
-                        } }, 'Download optimized code')
-                    ])
+            // 3. Finalize
+            h('section', { class: 'sidebar-section', 'aria-labelledby': 'finalize-heading', id: 'finalize-section' }, [
+                h('h3', { id: 'finalize-heading', class: 'sidebar-label' }, 'Finalize'),
+                h('div', { style: 'display:flex; gap:0.5rem; align-items:center; justify-content:flex-start;' }, [
+                    h('button', { class: 'small', onClick: () => {
+                        if (!processedSvg || !processedSvg.code) return setA11yStatus('No optimized code to copy');
+                        navigator.clipboard.writeText(processedSvg.code);
+                        setA11yStatus('Optimized code copied');
+                        setTimeout(() => setA11yStatus(''), 1200);
+                    } }, 'Copy optimized code'),
+                    h('button', { class: 'small secondary', onClick: () => {
+                        if (!processedSvg || !processedSvg.code) return setA11yStatus('No optimized code to download');
+                        const blob = new Blob([processedSvg.code], { type: 'image/svg+xml' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = (currentFileName && currentFileName.endsWith('.svg')) ? currentFileName.replace(/\.svg$/, '.optimized.svg') : 'optimized.svg';
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                        URL.revokeObjectURL(url);
+                        setA11yStatus('Downloaded optimized SVG');
+                        setTimeout(() => setA11yStatus(''), 1200);
+                    } }, 'Download optimized code')
                 ])
             ]),
-            
-            // Resources Accordion
-            h('div', { class: 'accordion', role: 'region', 'aria-expanded': accordionState.resources ? 'true' : 'false' }, [
-                h('div', { class: 'accordion-header', onClick: (e) => {
-                    const next = { ...accordionState, resources: !accordionState.resources };
-                    setAccordionState(next);
-                    try { localStorage.setItem('accordionState', JSON.stringify(next)); } catch (err) {}
-                } }, [
-                    h('span', {}, 'Resources'),
-                    h('span', { class: 'chev' }, '▸')
-                ]),
-                h('div', { class: 'accordion-content' }, [
-                    h('ul', { class: 'resources-list' }, [
-                        h('li', {}, [
-                            h('a', {
-                                href: 'https://www.smashingmagazine.com/2021/05/accessible-svg-patterns-comparison/',
-                                target: '_blank',
-                                rel: 'noopener noreferrer'
-                            }, 'Accessible SVG Patterns (Carie Fisher)')
-                        ]),
-                        h('li', {}, [
-                            h('a', {
-                                href: 'https://www.deque.com/blog/creating-accessible-svgs/',
-                                target: '_blank',
-                                rel: 'noopener noreferrer'
-                            }, 'Creating Accessible SVGs (Deque)')
-                        ]),
-                        h('li', {}, [
-                            h('a', {
-                                href: 'https://polypane.app/blog/forced-colors-explained-a-practical-guide/',
-                                target: '_blank',
-                                rel: 'noopener noreferrer'
-                            }, 'Forced Colors Guide (Polypane)')
-                        ]),
-                        h('li', {}, [
-                            h('a', {
-                                href: 'https://www.w3.org/WAI/WCAG22/quickref/',
-                                target: '_blank',
-                                rel: 'noopener noreferrer'
-                            }, 'WCAG 2.2 Quick Reference')
-                        ])
+
+            // Resources
+            h('section', { class: 'sidebar-section', 'aria-labelledby': 'resources-heading' }, [
+                h('h3', { id: 'resources-heading', class: 'sidebar-label' }, 'Resources'),
+                h('ul', { class: 'resources-list' }, [
+                    h('li', {}, [
+                        h('a', {
+                            href: 'https://www.smashingmagazine.com/2021/05/accessible-svg-patterns-comparison/',
+                            target: '_blank',
+                            rel: 'noopener noreferrer'
+                        }, 'Accessible SVG Patterns (Carie Fisher)')
+                    ]),
+                    h('li', {}, [
+                        h('a', {
+                            href: 'https://www.deque.com/blog/creating-accessible-svgs/',
+                            target: '_blank',
+                            rel: 'noopener noreferrer'
+                        }, 'Creating Accessible SVGs (Deque)')
+                    ]),
+                    h('li', {}, [
+                        h('a', {
+                            href: 'https://polypane.app/blog/forced-colors-explained-a-practical-guide/',
+                            target: '_blank',
+                            rel: 'noopener noreferrer'
+                        }, 'Forced Colors Guide (Polypane)')
+                    ]),
+                    h('li', {}, [
+                        h('a', {
+                            href: 'https://www.w3.org/WAI/WCAG22/quickref/',
+                            target: '_blank',
+                            rel: 'noopener noreferrer'
+                        }, 'WCAG 2.2 Quick Reference')
                     ])
                 ])
             ])

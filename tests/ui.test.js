@@ -15,17 +15,17 @@ const __dirname = path.dirname(__filename);
     if (!/Download optimized code/.test(appSrc)) throw new Error('Download optimized code label not present in app.js');
     if (!/classStyles\.get/.test(appSrc)) throw new Error('Class-based style resolution not present in app.js');
 
-    // Create a small DOM and inject an accordion to validate selectors and basic interaction
+    // Create a small DOM and inject a finalize section to validate selectors and basic interaction
     const dom = new JSDOM(html);
     const document = dom.window.document;
-    const finalize = document.createElement('div'); finalize.className = 'accordion';
+    const finalize = document.createElement('section'); finalize.className = 'sidebar-section';
     const copy = document.createElement('button'); copy.className = 'small'; copy.textContent = 'Copy optimized code';
     const dl = document.createElement('button'); dl.className = 'small secondary'; dl.textContent = 'Download optimized code';
     finalize.appendChild(copy); finalize.appendChild(dl);
     document.body.appendChild(finalize);
 
-    const copyBtn = document.querySelector('.accordion button.small');
-    const dlBtn = document.querySelector('.accordion button.small.secondary');
+    const copyBtn = document.querySelector('section.sidebar-section button.small');
+    const dlBtn = document.querySelector('section.sidebar-section button.small.secondary');
     if (!copyBtn) throw new Error('Copy button selector missing');
     if (!dlBtn) throw new Error('Download button selector missing');
 
