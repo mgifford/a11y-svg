@@ -32,6 +32,19 @@ jobs:
       github.event_name == 'schedule' ||
       (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     steps:
+      - name: Validate GH_TOKEN secret is configured
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "::error::The GH_TOKEN secret is not set."
+            echo "::error::Create a fine-grained PAT with: actions:write, contents:write, issues:write, pull-requests:write"
+            echo "::error::Then add it as a repository secret named GH_TOKEN."
+            echo "::error::See: https://github.com/github/accessibility-scanner#setup"
+            exit 1
+          fi
+          echo "Token validation complete."
+
       - name: Run accessibility scanner
         uses: github/accessibility-scanner@v2
         with:
