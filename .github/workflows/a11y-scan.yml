@@ -33,19 +33,23 @@ jobs:
       (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     steps:
       - name: Validate GH_TOKEN secret is configured
+        id: check_token
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           if [ -z "${GH_TOKEN}" ]; then
-            echo "::error::The GH_TOKEN secret is not set."
-            echo "::error::Create a fine-grained PAT with: actions:write, contents:write, issues:write, pull-requests:write"
-            echo "::error::Then add it as a repository secret named GH_TOKEN."
-            echo "::error::See: https://github.com/github/accessibility-scanner#setup"
-            exit 1
+            echo "::warning::The GH_TOKEN secret is not set. Skipping accessibility scan."
+            echo "::warning::To enable scanning, create a fine-grained PAT with: actions:write, contents:write, issues:write, pull-requests:write"
+            echo "::warning::Then add it as a repository secret named GH_TOKEN."
+            echo "::warning::See: https://github.com/github/accessibility-scanner#setup"
+            echo "token_available=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Token validation complete."
+            echo "token_available=true" >> "$GITHUB_OUTPUT"
           fi
-          echo "Token validation complete."
 
       - name: Run accessibility scanner
+        if: steps.check_token.outputs.token_available == 'true'
         uses: github/accessibility-scanner@v2
         with:
           urls: |
