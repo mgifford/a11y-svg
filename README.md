@@ -151,6 +151,38 @@ The full AGPL-3.0 license text is available at <https://www.gnu.org/licenses/agp
 
 All source files include the AGPL-3.0 license header as required.
 
+## 🤖 AI Disclosure
+
+Transparency about AI use is a first-class concern for this project.
+
+### Was AI used to build this project?
+
+**Yes.** [GitHub Copilot Coding Agent](https://docs.github.com/en/copilot/how-tos/use-copilot-agents/coding-agent/about-github-copilot-coding-agent) has been used throughout development to implement features, write tests, refactor code, and author documentation — including this file. The `.github/copilot-instructions.md` and `AGENTS.md` files provide the instructions and guardrails that govern how the agent operates in this repository.
+
+### Is AI used when running the program?
+
+**No.** The browser application (`index.html` / `app.js`) contains no AI API calls, no model inference, and no calls to any external LLM service. All SVG optimization, accessibility analysis, contrast checking, and theme generation are performed by deterministic, rule-based JavaScript running entirely in the user's browser.
+
+### Is browser-based AI enabled in this application?
+
+**No.** The application does not use the [Chrome Built-in AI APIs](https://developer.chrome.com/docs/ai/built-in) (`window.ai`, Prompt API, Summarization API, etc.), WebLLM, Transformers.js, or any other browser-native or in-page inference engine. No model weights are downloaded or executed client-side.
+
+### AI in CI/CD
+
+The [Accessibility Scanner workflow](.github/workflows/accessibility-scanner.yml) sets `skip_copilot_assignment: false`, which means **GitHub Copilot** may be assigned to accessibility issues discovered by the scanner to suggest remediation. This is a CI/CD integration only and does not affect the runtime application.
+
+### Summary table
+
+| Context | AI used? | Tool |
+|---------|----------|------|
+| Building / coding the project | ✅ Yes | GitHub Copilot Coding Agent |
+| Writing tests and documentation | ✅ Yes | GitHub Copilot Coding Agent |
+| CI/CD accessibility issue triage | ✅ Yes | GitHub Copilot (issue assignment) |
+| Running the browser application | ❌ No | — |
+| Browser-based / client-side AI | ❌ No | — |
+
+> **AGENTS.md instruction**: AI agents contributing to this project MUST keep this section accurate and up to date. Only list tools that were genuinely used. See the [AI Disclosure instruction in AGENTS.md](AGENTS.md#documentation-expectations) for the full requirement.
+
 ## 🤝 Contributing
 
 Contributions are welcome! Please ensure:
