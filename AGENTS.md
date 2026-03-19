@@ -122,6 +122,7 @@ npm test  # Must pass 100% (35/35 tests)
 - Keep README.md aligned with these guardrails: zero-build runtime, AGPL-3.0 headers, and the current QA pipeline (`npm test` for 35/35, `npm run qa` for accessibility + linting).
 - Reference [SVG_ACCESSIBILITY_BEST_PRACTICES.md](SVG_ACCESSIBILITY_BEST_PRACTICES.md) and [SVG_OPTIMIZATION_BEST_PRACTICES.md](SVG_OPTIMIZATION_BEST_PRACTICES.md) when documenting features or prompting AI-assisted changes.
 - Note any new QA coverage (tests or scripts) in README.md so maintainers understand which checks protect a change.
+- **AI Disclosure**: Whenever an AI agent contributes to this project, it MUST update the `## 🤖 AI Disclosure` section of README.md to accurately reflect which LLM(s) were involved, how they were used (development, CI/CD, runtime), and whether any browser-based AI is enabled. Only disclose tools that were genuinely used — do not fabricate or omit entries.
 
 ## SVGO Profiles Linked To Normative Specs
 - `accessible-default` (implemented in [svgo.config.mjs](svgo.config.mjs)) maps to Sections 2 and 4 of [SVG_OPTIMIZATION_BEST_PRACTICES.md](SVG_OPTIMIZATION_BEST_PRACTICES.md). Keep `collapseGroups` and `mergePaths` disabled and numeric precision at 3 decimals to stay edit-safe.
