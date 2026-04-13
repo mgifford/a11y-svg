@@ -46,7 +46,9 @@
     --bg-body: #ffffff;
     --text-body: #1a1a1a;
     --primary: #005a9c;
-    --primary-text: #ffffff;    --primary-light: rgba(0, 90, 156, 0.1);    --border: #ced4da;
+    --primary-text: #ffffff;
+    --primary-light: rgba(0, 90, 156, 0.1);
+    --border: #ced4da;
     --card-bg: #f8f9fa;
     --focus-ring: #005a9c;
     --error: #d32f2f;
@@ -74,6 +76,15 @@ body {
     padding: 0;
     height: 100vh;
     overflow: hidden;
+    /* Smooth theme transition */
+    transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* Respect user's motion preference */
+@media (prefers-reduced-motion: reduce) {
+    * {
+        transition: none !important;
+    }
 }
 
 #app {
@@ -103,18 +114,62 @@ header p {
     opacity: 0.8;
 }
 
-.theme-control {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-.theme-select {
+/* Theme toggle button (sun/moon) */
+#theme-toggle {
+    margin-left: auto;
+    padding: 0.4rem;
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: 4px;
     background: var(--bg-body);
     color: var(--text-body);
-    padding: 0.25rem 0.5rem;
-    font-size: 0.85rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s ease;
+}
+
+#theme-toggle:hover {
+    background-color: var(--primary-light, rgba(0, 90, 156, 0.1));
+}
+
+#theme-toggle:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+}
+
+.theme-icon {
+    display: block;
+    width: 20px;
+    height: 20px;
+}
+
+/* Default state: show moon (means "currently light — click to go dark") */
+.sun-icon { display: none; }
+.moon-icon { display: block; }
+
+/* System prefers dark before JS loads: show sun (means "currently dark — click to go light") */
+@media (prefers-color-scheme: dark) {
+    .sun-icon { display: block; }
+    .moon-icon { display: none; }
+}
+
+/* JS-driven: show correct icon based on active theme */
+:root[data-theme="dark"] .sun-icon  { display: block; }
+:root[data-theme="dark"] .moon-icon { display: none; }
+:root[data-theme="light"] .sun-icon  { display: none; }
+:root[data-theme="light"] .moon-icon { display: block; }
+
+/* Forced-colors (Windows High Contrast) mode support */
+@media (forced-colors: active) {
+    #theme-toggle {
+        border: 1px solid ButtonText;
+        color: ButtonText;
+        background-color: ButtonFace;
+    }
+    #theme-toggle:focus-visible {
+        outline: 2px solid Highlight;
+    }
 }
 
 .app-layout {
@@ -311,6 +366,8 @@ textarea#svg-code {
 @media (prefers-color-scheme: dark) {
     .main-content { background: #000; }
 }
+:root[data-theme="dark"] .main-content { background: #000; }
+:root[data-theme="light"] .main-content { background: #e9ecef; }
 
 .preview-container {
     display: grid;
@@ -375,6 +432,9 @@ textarea#svg-code {
     .preview-resizer:hover {
         background: linear-gradient(90deg, transparent 0%, #90caf9 50%, transparent 100%);
     }
+}
+:root[data-theme="dark"] .preview-resizer:hover {
+    background: linear-gradient(90deg, transparent 0%, #90caf9 50%, transparent 100%);
 }
 
 .preview-header {
