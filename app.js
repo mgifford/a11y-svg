@@ -513,8 +513,15 @@ const App = () => {
         const fileInputRef = useRef(null);
         const [caretStyle, setCaretStyle] = useState({ top: 0, left: 0, height: 18, visible: false });
         const [theme, setTheme] = useState(() => {
-            try { return localStorage.getItem('theme') || 'system'; } catch (e) { return 'system'; }
+            try {
+                const saved = localStorage.getItem('theme');
+                if (saved === 'light' || saved === 'dark') return saved;
+            } catch (e) {}
+            return (typeof window !== 'undefined' && window.matchMedia &&
+                window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
         });
+        const userHasOverrideRef = useRef(false);
+        try { userHasOverrideRef.current = !!localStorage.getItem('theme'); } catch (e) {}
 
         let latestClassStyles = new Map();
 
@@ -1635,18 +1642,26 @@ const App = () => {
         latestSvgRef.current = svgInput || '';
     }, [svgInput]);
 
-    // Apply selected theme
+    // Apply selected theme and listen for OS preference changes
     useEffect(() => {
         const root = document.documentElement;
         if (!root) return;
-        if (theme === 'light') {
-            root.setAttribute('data-theme', 'light');
-        } else if (theme === 'dark') {
-            root.setAttribute('data-theme', 'dark');
-        } else {
-            root.removeAttribute('data-theme'); // system
+        root.setAttribute('data-theme', theme);
+        if (userHasOverrideRef.current) {
+            try { localStorage.setItem('theme', theme); } catch (e) {}
         }
-        try { localStorage.setItem('theme', theme); } catch (e) {}
+
+        const mq = (typeof window !== 'undefined' && window.matchMedia)
+            ? window.matchMedia('(prefers-color-scheme: dark)')
+            : null;
+        if (!mq) return;
+        const onSystemChange = (e) => {
+            if (!userHasOverrideRef.current) {
+                setTheme(e.matches ? 'dark' : 'light');
+            }
+        };
+        mq.addEventListener('change', onSystemChange);
+        return () => mq.removeEventListener('change', onSystemChange);
     }, [theme]);
 
     useEffect(() => {
@@ -2103,18 +2118,38 @@ const App = () => {
         h('aside', { class: 'sidebar' }, [
             h('header', {}, [
                 h('h1', {}, 'A11y-SVG-Studio'),
-                h('div', { class: 'theme-control' }, [
-                    h('label', { for: 'theme-select' }, 'Theme:'),
-                    h('select', {
-                        id: 'theme-select',
-                        class: 'theme-select',
-                        value: theme,
-                        onChange: (e) => setTheme(e.target.value),
-                        'aria-label': 'Interface theme'
+                h('button', {
+                    id: 'theme-toggle',
+                    'aria-label': theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode',
+                    onClick: () => {
+                        const next = theme === 'dark' ? 'light' : 'dark';
+                        userHasOverrideRef.current = true;
+                        try { localStorage.setItem('theme', next); } catch (e) {}
+                        setTheme(next);
+                    }
+                }, [
+                    // Sun icon — shown when in dark mode (click to go light)
+                    h('svg', {
+                        'aria-hidden': 'true',
+                        class: 'theme-icon sun-icon',
+                        viewBox: '0 0 24 24',
+                        width: '20',
+                        height: '20',
+                        focusable: 'false'
                     }, [
-                        h('option', { value: 'system' }, 'System'),
-                        h('option', { value: 'light' }, 'Light'),
-                        h('option', { value: 'dark' }, 'Dark')
+                        h('circle', { cx: '12', cy: '12', r: '5', fill: 'currentColor' }),
+                        h('path', { stroke: 'currentColor', 'stroke-width': '1.5', 'stroke-linecap': 'round', fill: 'none', d: 'M12 1v3M12 20v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M1 12h3M20 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12' })
+                    ]),
+                    // Moon icon — shown when in light mode (click to go dark)
+                    h('svg', {
+                        'aria-hidden': 'true',
+                        class: 'theme-icon moon-icon',
+                        viewBox: '0 0 24 24',
+                        width: '20',
+                        height: '20',
+                        focusable: 'false'
+                    }, [
+                        h('path', { fill: 'currentColor', d: 'M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z' })
                     ])
                 ])
             ]),
