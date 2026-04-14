@@ -3399,10 +3399,10 @@ function computeCaretPosition(textarea) {
     const win = doc.defaultView || window;
     const style = win.getComputedStyle(textarea);
 
-    // --- Use cached mirror instead of creating a new one ---
+    // Use cached mirror
     const mirror = getMirror(doc, style, textarea.clientWidth);
 
-    // --- Prepare text before caret ---
+    // Prepare text before caret
     const tabSize = Math.max(parseInt(style.tabSize, 10) || 2, 1);
     const replaceTabs = (value) => value.replace(/\t/g, ' '.repeat(tabSize));
 
@@ -3414,9 +3414,10 @@ function computeCaretPosition(textarea) {
         .replace(/ /g, '\u00a0')      // spaces → &nbsp;
         .replace(/\n$/g, '\n\u200b'); // trailing newline → newline + ZWSP
 
+    // Set mirror content
     mirror.textContent = beforeAdjusted;
 
-    // --- Add caret marker ---
+    // Add caret marker
     const caretMarker = doc.createElement('span');
     const remainder = textarea.value.slice(selectionIndex);
     caretMarker.textContent =
@@ -3424,21 +3425,20 @@ function computeCaretPosition(textarea) {
 
     mirror.appendChild(caretMarker);
 
-    // --- Measure ---
+    // Measure
     const mirrorRect = mirror.getBoundingClientRect();
     const caretRect = caretMarker.getBoundingClientRect();
 
     const top = caretRect.top - mirrorRect.top;
     const left = caretRect.left - mirrorRect.left;
 
-    // Remove only the marker, not the mirror
+    // Cleanup marker only
     mirror.removeChild(caretMarker);
 
-    // --- Compute final caret box ---
+    // Compute final caret box
     const borderLeft = parseFloat(style.borderLeftWidth) || 0;
     const borderTop = parseFloat(style.borderTopWidth) || 0;
 
-    // Handle "normal" line-height
     const lineHeight =
         style.lineHeight === 'normal'
             ? parseFloat(style.fontSize) * 1.2
@@ -3450,4 +3450,5 @@ function computeCaretPosition(textarea) {
         height: lineHeight
     };
 }
+
 
