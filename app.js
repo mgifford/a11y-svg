@@ -1544,7 +1544,7 @@ const App = () => {
     const textarea = beautifiedTextareaRef.current;
     if (!textarea) return;
 
-    // --- Batch updates to avoid layout thrashing ---
+    // Batch updates to avoid layout thrashing
     let scheduled = false;
     const scheduleUpdate = () => {
         if (!scheduled) {
@@ -1558,10 +1558,12 @@ const App = () => {
 
     const handleFocus = () => scheduleUpdate();
     const handleBlur = () => {
-        setCaretStyle(prev => (prev.visible ? { ...prev, visible: false } : prev));
+        setCaretStyle(prev =>
+            prev.visible ? { ...prev, visible: false } : prev
+        );
     };
 
-    // --- Events that actually move the caret ---
+    // Events that actually move the caret
     textarea.addEventListener('input', scheduleUpdate);   // text changed
     textarea.addEventListener('click', scheduleUpdate);   // mouse moved caret
     textarea.addEventListener('keyup', scheduleUpdate);   // arrows, home/end
@@ -1584,6 +1586,7 @@ const App = () => {
         window.removeEventListener('resize', scheduleUpdate);
     };
 }, [activeEditorTab, updateBeautifiedCaret]);
+
 
     
     const fetchRandomSvg = async (attemptsLeft = 3) => {
