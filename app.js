@@ -967,28 +967,12 @@ const App = () => {
             const win = doc.defaultView || window;
             const style = win.getComputedStyle(textarea);
 
-            const mirror = doc.createElement('div');
-            mirror.style.position = 'absolute';
-            mirror.style.visibility = 'hidden';
-            mirror.style.whiteSpace = 'pre-wrap';
-            mirror.style.wordBreak = 'break-word';
-            mirror.style.top = '0';
-            mirror.style.left = '-9999px';
-            mirror.style.boxSizing = 'border-box';
-            mirror.style.padding = style.padding;
-            mirror.style.border = style.border;
-            mirror.style.fontFamily = style.fontFamily;
-            mirror.style.fontSize = style.fontSize;
-            mirror.style.fontWeight = style.fontWeight;
-            mirror.style.fontStyle = style.fontStyle;
-            mirror.style.letterSpacing = style.letterSpacing;
-            mirror.style.textTransform = style.textTransform;
-            mirror.style.textAlign = style.textAlign;
-            mirror.style.lineHeight = style.lineHeight;
-            mirror.style.tabSize = style.tabSize;
-            mirror.style.width = `${textarea.clientWidth}px`;
-            mirror.style.height = 'auto';
-            mirror.style.overflow = 'hidden';
+            const mirror = getMirror(doc, style, textarea.clientWidth);
+            mirror.textContent = beforeAdjusted;
+
+            const caretMarker = doc.createElement('span');
+            caretMarker.textContent = remainder.length > 0 ? replaceTabs(remainder[0]) : '\u200b';
+            mirror.appendChild(caretMarker);
 
             const tabSize = Math.max(parseInt(style.tabSize, 10) || 2, 1);
             const replaceTabs = (value) => value.replace(/\t/g, ' '.repeat(tabSize));
@@ -1002,13 +986,6 @@ const App = () => {
             const remainder = textarea.value.slice(selectionIndex);
             caretMarker.textContent = remainder.length > 0 ? replaceTabs(remainder[0]) : '\u200b';
             mirror.appendChild(caretMarker);
-
-            doc.body.appendChild(mirror);
-            const mirrorRect = mirror.getBoundingClientRect();
-            const caretRect = caretMarker.getBoundingClientRect();
-            const top = caretRect.top - mirrorRect.top;
-            const left = caretRect.left - mirrorRect.left;
-            doc.body.removeChild(mirror);
 
             const borderLeft = parseFloat(style.borderLeftWidth) || 0;
             const borderTop = parseFloat(style.borderTopWidth) || 0;
@@ -1883,17 +1860,24 @@ const App = () => {
     useEffect(() => {
         const textarea = beautifiedTextareaRef.current;
         if (!textarea) return;
-        textarea.addEventListener('input', updateBeautifiedCaret);
+
+        const update = () => updateBeautifiedCaret();
         const handleFocus = () => updateBeautifiedCaret();
         const handleBlur = () => {
             setCaretStyle(prev => (prev.visible ? { ...prev, visible: false } : prev));
         };
-        textarea.addEventListener('input', update);
-        textarea.addEventListener('scroll', update);
+
+        textarea.addEventListener('input', update);   // text changed
+        textarea.addEventListener('scroll', update);  // viewport changed
+        textarea.addEventListener('click', update);   // caret moved by mouse
+        textarea.addEventListener('keyup', update);   // caret moved by arrows, home/end
         textarea.addEventListener('focus', handleFocus);
         textarea.addEventListener('blur', handleBlur);
         window.addEventListener('resize', update);
+
         updateBeautifiedCaret();
+
+
         return () => {
             events.forEach(evt => textarea.removeEventListener(evt, update));
             textarea.removeEventListener('scroll', update);
@@ -3310,3 +3294,98 @@ const App = () => {
 const root = document.getElementById('app');
 if (root) root.innerHTML = '';
 render(h(App), root);
+
+let cachedMirror = null;
+
+function getMirror(doc, style, width) {
+    if (!cachedMirror) {
+        const mirror = doc.createElement('div');
+        mirror.style.position = 'absolute';
+        mirror.style.visibility = 'hidden';
+        mirror.style.whiteSpace = 'pre-wrap';
+        mirror.style.wordBreak = 'break-word';
+        mirror.style.top = '0';
+        mirror.style.left = '-9999px';
+        mirror.style.boxSizing = 'border-box';
+        mirror.style.overflow = 'hidden';
+        cachedMirror = mirror;
+        doc.body.appendChild(mirror);
+    }
+
+    // Update dynamic properties
+    cachedMirror.style.padding = style.padding;
+    cachedMirror.style.border = style.border;
+    cachedMirror.style.fontFamily = style.fontFamily;
+    cachedMirror.style.fontSize = style.fontSize;
+    cachedMirror.style.fontWeight = style.fontWeight;
+    cachedMirror.style.fontStyle = style.fontStyle;
+    cachedMirror.style.letterSpacing = style.letterSpacing;
+    cachedMirror.style.textTransform = style.textTransform;
+    cachedMirror.style.textAlign = style.textAlign;
+    cachedMirror.style.lineHeight = style.lineHeight;
+    cachedMirror.style.tabSize = style.tabSize;
+    cachedMirror.style.width = `${width}px`;
+
+    return cachedMirror;
+}
+
+
+function computeCaretPosition(textarea) {
+    if (!textarea || typeof textarea.selectionStart !== 'number') return null;
+
+    const doc = textarea.ownerDocument || document;
+    const win = doc.defaultView || window;
+    const style = win.getComputedStyle(textarea);
+
+    // --- Use cached mirror instead of creating a new one ---
+    const mirror = getMirror(doc, style, textarea.clientWidth);
+
+    // --- Prepare text before caret ---
+    const tabSize = Math.max(parseInt(style.tabSize, 10) || 2, 1);
+    const replaceTabs = (value) => value.replace(/\t/g, ' '.repeat(tabSize));
+
+    const selectionIndex = textarea.selectionStart;
+    const before = replaceTabs(textarea.value.slice(0, selectionIndex));
+
+    // Preserve whitespace + trailing newline behavior
+    const beforeAdjusted = before
+        .replace(/ /g, '\u00a0')      // spaces → &nbsp;
+        .replace(/\n$/g, '\n\u200b'); // trailing newline → newline + ZWSP
+
+    mirror.textContent = beforeAdjusted;
+
+    // --- Add caret marker ---
+    const caretMarker = doc.createElement('span');
+    const remainder = textarea.value.slice(selectionIndex);
+    caretMarker.textContent =
+        remainder.length > 0 ? replaceTabs(remainder[0]) : '\u200b';
+
+    mirror.appendChild(caretMarker);
+
+    // --- Measure ---
+    const mirrorRect = mirror.getBoundingClientRect();
+    const caretRect = caretMarker.getBoundingClientRect();
+
+    const top = caretRect.top - mirrorRect.top;
+    const left = caretRect.left - mirrorRect.left;
+
+    // Remove only the marker, not the mirror
+    mirror.removeChild(caretMarker);
+
+    // --- Compute final caret box ---
+    const borderLeft = parseFloat(style.borderLeftWidth) || 0;
+    const borderTop = parseFloat(style.borderTopWidth) || 0;
+
+    // Handle "normal" line-height
+    const lineHeight =
+        style.lineHeight === 'normal'
+            ? parseFloat(style.fontSize) * 1.2
+            : parseFloat(style.lineHeight);
+
+    return {
+        top: top - textarea.scrollTop + borderTop,
+        left: left - textarea.scrollLeft + borderLeft,
+        height: lineHeight
+    };
+}
+
