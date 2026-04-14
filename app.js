@@ -1012,7 +1012,9 @@ const App = () => {
 
             const borderLeft = parseFloat(style.borderLeftWidth) || 0;
             const borderTop = parseFloat(style.borderTopWidth) || 0;
-            const lineHeight = parseFloat(style.lineHeight) || parseFloat(style.fontSize) || 16;
+            const lineHeight = style.lineHeight === 'normal'
+              ? parseFloat(style.fontSize) * 1.2
+              : parseFloat(style.lineHeight);
 
             return {
                 top: top - textarea.scrollTop + borderTop,
@@ -1881,13 +1883,12 @@ const App = () => {
     useEffect(() => {
         const textarea = beautifiedTextareaRef.current;
         if (!textarea) return;
-        const update = () => updateBeautifiedCaret();
+        textarea.addEventListener('input', updateBeautifiedCaret);
         const handleFocus = () => updateBeautifiedCaret();
         const handleBlur = () => {
             setCaretStyle(prev => (prev.visible ? { ...prev, visible: false } : prev));
         };
-        const events = ['input', 'keyup', 'keydown', 'click', 'mouseup'];
-        events.forEach(evt => textarea.addEventListener(evt, update));
+        textarea.addEventListener('input', update);
         textarea.addEventListener('scroll', update);
         textarea.addEventListener('focus', handleFocus);
         textarea.addEventListener('blur', handleBlur);
