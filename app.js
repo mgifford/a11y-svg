@@ -1941,8 +1941,10 @@ const App = () => {
 
 
         return () => {
-            events.forEach(evt => textarea.removeEventListener(evt, update));
+            textarea.removeEventListener('input', update);
             textarea.removeEventListener('scroll', update);
+            textarea.removeEventListener('click', update);
+            textarea.removeEventListener('keyup', update);
             textarea.removeEventListener('focus', handleFocus);
             textarea.removeEventListener('blur', handleBlur);
             window.removeEventListener('resize', update);
