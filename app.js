@@ -582,18 +582,17 @@ const App = () => {
         const handleInlineMetaChange = (field, value) => {
             setUserHasInteracted(true);
             metaIsDirtyRef.current = true;
-            const nextMeta = { ...meta, [field]: value };
-            setMeta(nextMeta);
-            // Instantly sync changes to SVG and preview
             const updatedMeta = { ...meta, [field]: value };
             setMeta(updatedMeta);
+            // Keep intent as informational while editing — don't unmount the fields
+            // mid-keystroke just because the title is temporarily empty.
+            // The SVG output uses decorative only when title is truly absent.
             const hasTitle = String(updatedMeta.title || '').trim().length > 0;
-            const nextIntent = hasTitle ? 'informational' : 'decorative';
-            setIntent(nextIntent);
+            const svgIntent = hasTitle ? 'informational' : 'decorative';
             skipNextAutoOptimizeRef.current = true;
             handleOptimize(
                 latestSvgRef.current || svgInput || '',
-                { intent: nextIntent, meta: updatedMeta }
+                { intent: svgIntent, meta: updatedMeta }
             );
             metaIsDirtyRef.current = false;
         };
@@ -2232,7 +2231,13 @@ const App = () => {
                             placeholder: 'Short, unique title (1-3 words)',
                             required: true,
                             'aria-required': 'true',
-                            onInput: (e) => handleInlineMetaChange('title', e.target.value)
+                            onInput: (e) => handleInlineMetaChange('title', e.target.value),
+                            onBlur: () => {
+                                if (!String(meta.title || '').trim()) {
+                                    setIntent('decorative');
+                                    setMeta({ title: '', desc: '' });
+                                }
+                            }
                         })
                     ]),
                     h('label', { class: 'meta-field' }, [
