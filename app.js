@@ -1541,12 +1541,51 @@ const App = () => {
 
     // Lint after processing completes
     useEffect(() => {
-        try {
-            const l = lintSvg(processedSvg.code || '');
-            setLintResults(l);
-        } catch (e) { setLintResults([{ level: 'error', message: String(e) }]); }
-    }, [processedSvg.code, intent, bgLight, bgDark]);
+    const textarea = beautifiedTextareaRef.current;
+    if (!textarea) return;
 
+    // --- Batch updates to avoid layout thrashing ---
+    let scheduled = false;
+    const scheduleUpdate = () => {
+        if (!scheduled) {
+            scheduled = true;
+            requestAnimationFrame(() => {
+                scheduled = false;
+                updateBeautifiedCaret();
+            });
+        }
+    };
+
+    const handleFocus = () => scheduleUpdate();
+    const handleBlur = () => {
+        setCaretStyle(prev => (prev.visible ? { ...prev, visible: false } : prev));
+    };
+
+    // --- Events that actually move the caret ---
+    textarea.addEventListener('input', scheduleUpdate);   // text changed
+    textarea.addEventListener('click', scheduleUpdate);   // mouse moved caret
+    textarea.addEventListener('keyup', scheduleUpdate);   // arrows, home/end
+    textarea.addEventListener('scroll', scheduleUpdate);  // viewport changed
+    textarea.addEventListener('focus', handleFocus);
+    textarea.addEventListener('blur', handleBlur);
+
+    window.addEventListener('resize', scheduleUpdate);
+
+    // Initial sync
+    scheduleUpdate();
+
+    return () => {
+        textarea.removeEventListener('input', scheduleUpdate);
+        textarea.removeEventListener('click', scheduleUpdate);
+        textarea.removeEventListener('keyup', scheduleUpdate);
+        textarea.removeEventListener('scroll', scheduleUpdate);
+        textarea.removeEventListener('focus', handleFocus);
+        textarea.removeEventListener('blur', handleBlur);
+        window.removeEventListener('resize', scheduleUpdate);
+    };
+}, [activeEditorTab, updateBeautifiedCaret]);
+
+    
     const fetchRandomSvg = async (attemptsLeft = 3) => {
         try {
             setA11yStatus('Loading random sample...');
