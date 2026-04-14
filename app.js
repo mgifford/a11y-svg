@@ -961,44 +961,64 @@ const App = () => {
             return issues;
         };
 
-        const computeCaretPosition = (textarea) => {
-            if (!textarea || typeof textarea.selectionStart !== 'number') return null;
-            const doc = textarea.ownerDocument || document;
-            const win = doc.defaultView || window;
-            const style = win.getComputedStyle(textarea);
+        function computeCaretPosition(textarea) {
+    if (!textarea || typeof textarea.selectionStart !== 'number') return null;
 
-            const mirror = getMirror(doc, style, textarea.clientWidth);
-            mirror.textContent = beforeAdjusted;
+    const doc = textarea.ownerDocument || document;
+    const win = doc.defaultView || window;
+    const style = win.getComputedStyle(textarea);
 
-            const caretMarker = doc.createElement('span');
-            caretMarker.textContent = remainder.length > 0 ? replaceTabs(remainder[0]) : '\u200b';
-            mirror.appendChild(caretMarker);
+    // Use cached mirror
+    const mirror = getMirror(doc, style, textarea.clientWidth);
 
-            const tabSize = Math.max(parseInt(style.tabSize, 10) || 2, 1);
-            const replaceTabs = (value) => value.replace(/\t/g, ' '.repeat(tabSize));
+    // Prepare text before caret
+    const tabSize = Math.max(parseInt(style.tabSize, 10) || 2, 1);
+    const replaceTabs = (value) => value.replace(/\t/g, ' '.repeat(tabSize));
 
-            const selectionIndex = textarea.selectionStart;
-            const before = replaceTabs(textarea.value.slice(0, selectionIndex));
-            const beforeAdjusted = before.replace(/ /g, '\u00a0').replace(/\n$/g, '\n\u200b');
-            mirror.textContent = beforeAdjusted;
+    const selectionIndex = textarea.selectionStart;
+    const before = replaceTabs(textarea.value.slice(0, selectionIndex));
 
-            const caretMarker = doc.createElement('span');
-            const remainder = textarea.value.slice(selectionIndex);
-            caretMarker.textContent = remainder.length > 0 ? replaceTabs(remainder[0]) : '\u200b';
-            mirror.appendChild(caretMarker);
+    // Preserve whitespace + trailing newline behavior
+    const beforeAdjusted = before
+        .replace(/ /g, '\u00a0')      // spaces → &nbsp;
+        .replace(/\n$/g, '\n\u200b'); // trailing newline → newline + ZWSP
 
-            const borderLeft = parseFloat(style.borderLeftWidth) || 0;
-            const borderTop = parseFloat(style.borderTopWidth) || 0;
-            const lineHeight = style.lineHeight === 'normal'
-              ? parseFloat(style.fontSize) * 1.2
-              : parseFloat(style.lineHeight);
+    mirror.textContent = beforeAdjusted;
 
-            return {
-                top: top - textarea.scrollTop + borderTop,
-                left: left - textarea.scrollLeft + borderLeft,
-                height: lineHeight
-            };
-        };
+    // Add caret marker
+    const caretMarker = doc.createElement('span');
+    const remainder = textarea.value.slice(selectionIndex);
+    caretMarker.textContent =
+        remainder.length > 0 ? replaceTabs(remainder[0]) : '\u200b';
+
+    mirror.appendChild(caretMarker);
+
+    // Measure
+    const mirrorRect = mirror.getBoundingClientRect();
+    const caretRect = caretMarker.getBoundingClientRect();
+
+    const top = caretRect.top - mirrorRect.top;
+    const left = caretRect.left - mirrorRect.left;
+
+    // Cleanup marker only
+    mirror.removeChild(caretMarker);
+
+    // Compute final caret box
+    const borderLeft = parseFloat(style.borderLeftWidth) || 0;
+    const borderTop = parseFloat(style.borderTopWidth) || 0;
+
+    const lineHeight =
+        style.lineHeight === 'normal'
+            ? parseFloat(style.fontSize) * 1.2
+            : parseFloat(style.lineHeight);
+
+    return {
+        top: top - textarea.scrollTop + borderTop,
+        left: left - textarea.scrollLeft + borderLeft,
+        height: lineHeight
+    };
+}
+
 
         // Apply a color fix: replace original tokens in the editor code with newHex
         const applyColorFix = (originalToken, newHex, options = {}) => {
