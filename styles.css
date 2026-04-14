@@ -941,6 +941,32 @@ dialog h3 { margin-top: 0; }
     caret-color: transparent;
 }
 
+/* Faux caret for the beautified editor */
+.beautified-caret {
+  position: absolute;
+  width: 2px;              /* tweak for thickness */
+  background: currentColor;/* follows text color / theme */
+  pointer-events: none;
+  /* Blink animation */
+  animation: a11y-caret-blink 1s steps(1, end) infinite;
+}
+
+/* Respect prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  .beautified-caret {
+    animation: none;
+  }
+}
+
+@keyframes a11y-caret-blink {
+  0%, 49% {
+    opacity: 1;
+  }
+  50%, 100% {
+    opacity: 0;
+  }
+}
+
 .code-shell.read-only textarea {
     cursor: text;
     line-height: 1.25;
