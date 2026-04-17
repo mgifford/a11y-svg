@@ -85,11 +85,23 @@ function formatXml(xml) {
         .replace(/^\s+/, '');
 }
 
+function collapseInlineElements(str) {
+    // Collapse <title> and <desc> text content onto a single line (Carie Fisher pattern).
+    // Transforms:  <title id="...">\n    text\n  </title>
+    // Into:        <title id="...">text</title>
+    // Uses backreference \1 so only matching open/close tags are collapsed.
+    return str.replace(
+        /<(title|desc)([^>]*)>\s*([^<]*?)\s*<\/\1>/g,
+        (_, tag, attrs, content) => `<${tag}${attrs}>${content.trim()}</${tag}>`
+    );
+}
+
 function beautifySvg(svg) {
     if (!svg) return '';
     try {
         const formatted = xmlFormatter(svg, { indentation: '  ', lineSeparator: '\n' });
-        return formatted.endsWith('\n') ? formatted : `${formatted}\n`;
+        const result = formatted.endsWith('\n') ? formatted : `${formatted}\n`;
+        return collapseInlineElements(result);
     } catch (e) {
         try {
             const parser = new DOMParser();
@@ -98,7 +110,8 @@ function beautifySvg(svg) {
             const serializer = new XMLSerializer();
             const raw = serializer.serializeToString(doc);
             const formatted = formatXml(raw);
-            return formatted.endsWith('\n') ? formatted : `${formatted}\n`;
+            const result = formatted.endsWith('\n') ? formatted : `${formatted}\n`;
+            return collapseInlineElements(result);
         } catch (err) {
             return svg;
         }
