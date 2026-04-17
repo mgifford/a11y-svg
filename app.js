@@ -2963,6 +2963,13 @@ const App = () => {
                             target: '_blank',
                             rel: 'noopener noreferrer'
                         }, 'WCAG 2.2 Quick Reference')
+                    ]),
+                    h('li', {}, [
+                        h('a', {
+                            href: 'https://www.ashleysheridan.co.uk/blog/Creating+Accessible+Flowcharts',
+                            target: '_blank',
+                            rel: 'noopener noreferrer'
+                        }, 'Creating Accessible Flowcharts (Ashley Sheridan)')
                     ])
                 ])
             ])

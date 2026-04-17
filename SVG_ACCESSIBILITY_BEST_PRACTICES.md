@@ -154,7 +154,89 @@ Accessibility must be measured against real usage context, not static rules alon
 
 ---
 
-## 10. Outcome-Based Testing
+## 10. Accessible Flowcharts
+
+Flowcharts and decision trees present a unique accessibility challenge: their meaning
+lies in the *connections between nodes*, not just the individual shapes. A single
+`<title>` is rarely sufficient.
+
+### Minimum requirements
+
+All accessible flowcharts must have:
+
+- `role="img"` on the `<svg>` element
+- A `<title id="...">` with a short, meaningful name
+- A `<desc id="...">` that describes the entire flow in plain text (start-to-end
+  narrative including all decision branches)
+- `aria-labelledby` on `<svg>` referencing both the `<title>` id and the `<desc>` id
+
+```svg
+<svg role="img" aria-labelledby="fc-title fc-desc" viewBox="0 0 400 300"
+     xmlns="http://www.w3.org/2000/svg">
+  <title id="fc-title">Accessibility Pattern Decision Tree</title>
+  <desc id="fc-desc">
+    Start: Does the SVG convey meaning? If No, apply aria-hidden="true" (Decorative).
+    If Yes: Is it interactive? If No, use role="img" with title and desc (Informational).
+    If Yes, add tabindex, keyboard handlers, and ARIA roles (Interactive).
+  </desc>
+  <!-- flowchart shapes … -->
+</svg>
+```
+
+### HTML text alternative for complex flowcharts
+
+When a flowchart has more than two or three decision branches, a `<desc>` alone is
+insufficient. Provide an equivalent HTML structure (ordered list, nested list, or
+table) adjacent to or linked from the SVG.
+
+Recommended approaches (see
+[Ashley Sheridan — Creating Accessible Flowcharts](https://www.ashleysheridan.co.uk/blog/Creating+Accessible+Flowcharts)):
+
+1. **`<figure>` + `<figcaption>` wrapping the SVG** — the `<figcaption>` holds the
+   text alternative and is always visible.
+2. **`<details>` / `<summary>` toggle** — hides the text alternative by default but
+   exposes it to all users on demand.
+3. **`aria-details`** — links the SVG to a separate element containing the full
+   HTML description:
+
+```html
+<figure>
+  <svg aria-details="fc-details" role="img" aria-labelledby="fc-title" …>
+    <title id="fc-title">SVG Accessibility Decision Tree</title>
+    <!-- shapes … -->
+  </svg>
+  <details id="fc-details">
+    <summary>Text description of the flowchart</summary>
+    <ol>
+      <li>Does the SVG convey meaning?
+        <ul>
+          <li>No → Apply <code>aria-hidden="true"</code> (Decorative pattern)</li>
+          <li>Yes → Continue to next step</li>
+        </ul>
+      </li>
+      <li>Is the SVG interactive?
+        <ul>
+          <li>No → Use <code>role="img"</code> with <code>&lt;title&gt;</code> and
+              <code>&lt;desc&gt;</code> (Informational pattern)</li>
+          <li>Yes → Add <code>tabindex</code>, keyboard handlers, and ARIA roles
+              (Interactive pattern)</li>
+        </ul>
+      </li>
+    </ol>
+  </details>
+</figure>
+```
+
+### What not to do
+
+- Do not rely on color alone to distinguish flowchart paths (use labels and arrow text).
+- Do not use `aria-hidden` on a flowchart that conveys meaning with no alternative.
+- Do not embed a flowchart as a CSS background image — it becomes completely
+  inaccessible.
+
+---
+
+## 11. Outcome-Based Testing
 
 Automated checks are useful, but they are not the source of truth.
 
