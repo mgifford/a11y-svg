@@ -1,0 +1,194 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 540"
+     role="img" aria-labelledby="fc-title fc-desc">
+  <title id="fc-title">SVG Accessibility Pattern Decision Tree</title>
+  <desc id="fc-desc">
+    A flowchart for choosing the correct SVG accessibility pattern.
+    Start: Does the SVG convey meaning? If No, apply aria-hidden="true" and role="presentation" (Decorative pattern).
+    If Yes: Is the SVG a standalone informational graphic? If Yes, use role="img" with aria-labelledby referencing a title and desc element (Informational pattern).
+    If the SVG contains interactive controls, add tabindex="0", keyboard handlers, and ARIA roles for each control (Interactive pattern).
+  </desc>
+
+  <!-- START node (rounded rectangle) -->
+  <rect x="140" y="20" width="140" height="44" rx="22" ry="22"
+        fill="#4f86c6" stroke="#2c5f8a" stroke-width="2"/>
+  <text x="210" y="47" text-anchor="middle" font-size="14"
+        font-family="sans-serif" font-weight="bold" fill="#ffffff">Start</text>
+
+  <!-- Arrow: Start → Decision 1 -->
+  <line x1="210" y1="64" x2="210" y2="104" stroke="#333333" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Decision 1 (diamond): Does the SVG convey meaning? -->
+  <polygon points="210,104 310,154 210,204 110,154"
+           fill="#fff8e1" stroke="#e0a800" stroke-width="2"/>
+  <text x="210" y="148" text-anchor="middle" font-size="12"
+        font-family="sans-serif" fill="#4a3700">Does the SVG</text>
+  <text x="210" y="164" text-anchor="middle" font-size="12"
+        font-family="sans-serif" fill="#4a3700">convey meaning?</text>
+
+  <!-- NO branch label -->
+  <text x="60" y="160" text-anchor="middle" font-size="11"
+        font-family="sans-serif" font-style="italic" fill="#333333">No</text>
+  <!-- Arrow: Decision 1 → Decorative -->
+  <line x1="110" y1="154" x2="60" y2="154" stroke="#333333" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="60" y1="154" x2="60" y2="260" stroke="#333333" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- YES branch label -->
+  <text x="220" y="226" text-anchor="start" font-size="11"
+        font-family="sans-serif" font-style="italic" fill="#333333">Yes</text>
+  <!-- Arrow: Decision 1 → Decision 2 -->
+  <line x1="210" y1="204" x2="210" y2="264" stroke="#333333" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Decision 2 (diamond): Is it interactive? -->
+  <polygon points="210,264 310,314 210,364 110,314"
+           fill="#f0fff4" stroke="#38a169" stroke-width="2"/>
+  <text x="210" y="308" text-anchor="middle" font-size="12"
+        font-family="sans-serif" fill="#1a4731">Is the SVG</text>
+  <text x="210" y="324" text-anchor="middle" font-size="12"
+        font-family="sans-serif" fill="#1a4731">interactive?</text>
+
+  <!-- NO branch label (Informational) -->
+  <text x="355" y="320" text-anchor="start" font-size="11"
+        font-family="sans-serif" font-style="italic" fill="#333333">No</text>
+  <!-- Arrow: Decision 2 → Informational -->
+  <line x1="310" y1="314" x2="370" y2="314" stroke="#333333" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="370" y1="314" x2="370" y2="420" stroke="#333333" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- YES branch label (Interactive) -->
+  <text x="220" y="385" text-anchor="start" font-size="11"
+        font-family="sans-serif" font-style="italic" fill="#333333">Yes</text>
+  <!-- Arrow: Decision 2 → Interactive -->
+  <line x1="210" y1="364" x2="210" y2="420" stroke="#333333" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- DECORATIVE outcome box -->
+  <rect x="20" y="260" width="80" height="60" rx="4" ry="4"
+        fill="#fed7d7" stroke="#c53030" stroke-width="2"/>
+  <text x="60" y="283" text-anchor="middle" font-size="10"
+        font-family="sans-serif" font-weight="bold" fill="#63171b">Decorative</text>
+  <text x="60" y="296" text-anchor="middle" font-size="9"
+        font-family="sans-serif" fill="#63171b">aria-hidden="true"</text>
+  <text x="60" y="309" text-anchor="middle" font-size="9"
+        font-family="sans-serif" fill="#63171b">focusable="false"</text>
+
+  <!-- INFORMATIONAL outcome box -->
+  <rect x="310" y="420" width="100" height="80" rx="4" ry="4"
+        fill="#bee3f8" stroke="#2b6cb0" stroke-width="2"/>
+  <text x="360" y="443" text-anchor="middle" font-size="10"
+        font-family="sans-serif" font-weight="bold" fill="#1a365d">Informational</text>
+  <text x="360" y="457" text-anchor="middle" font-size="9"
+        font-family="sans-serif" fill="#1a365d">role="img"</text>
+  <text x="360" y="470" text-anchor="middle" font-size="9"
+        font-family="sans-serif" fill="#1a365d">aria-labelledby</text>
+  <text x="360" y="483" text-anchor="middle" font-size="9"
+        font-family="sans-serif" fill="#1a365d">&lt;title&gt; + &lt;desc&gt;</text>
+  <text x="360" y="496" text-anchor="middle" font-size="9"
+        font-family="sans-serif" fill="#1a365d">HTML alternative</text>
+
+  <!-- INTERACTIVE outcome box -->
+  <rect x="140" y="420" width="120" height="80" rx="4" ry="4"
+        fill="#c6f6d5" stroke="#276749" stroke-width="2"/>
+  <text x="200" y="443" text-anchor="middle" font-size="10"
+        font-family="sans-serif" font-weight="bold" fill="#1c4532">Interactive</text>
+  <text x="200" y="457" text-anchor="middle" font-size="9"
+        font-family="sans-serif" fill="#1c4532">role + tabindex</text>
+  <text x="200" y="470" text-anchor="middle" font-size="9"
+        font-family="sans-serif" fill="#1c4532">keyboard handlers</text>
+  <text x="200" y="483" text-anchor="middle" font-size="9"
+        font-family="sans-serif" fill="#1c4532">aria-label per control</text>
+  <text x="200" y="496" text-anchor="middle" font-size="9"
+        font-family="sans-serif" fill="#1c4532">visible focus ring</text>
+
+  <!-- Arrow marker definition -->
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#333333"/>
+    </marker>
+  </defs>
+</svg>
+
+  <!-- Decision 1 (diamond): Does the SVG convey meaning? -->
+  <polygon points="210,104 310,154 210,204 110,154"
+           fill="#fff8e1" stroke="#e0a800" stroke-width="2"/>
+  <text x="210" y="148" text-anchor="middle" font-size="12"
+        font-family="sans-serif" fill="#4a3700">Does the SVG</text>
+  <text x="210" y="164" text-anchor="middle" font-size="12"
+        font-family="sans-serif" fill="#4a3700">convey meaning?</text>
+
+  <!-- NO branch label -->
+  <text x="60" y="160" text-anchor="middle" font-size="11"
+        font-family="sans-serif" font-style="italic" fill="currentColor">No</text>
+  <!-- Arrow: Decision 1 → Decorative -->
+  <line x1="110" y1="154" x2="60" y2="154" stroke="currentColor" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="60" y1="154" x2="60" y2="260" stroke="currentColor" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- YES branch label -->
+  <text x="220" y="226" text-anchor="start" font-size="11"
+        font-family="sans-serif" font-style="italic" fill="currentColor">Yes</text>
+  <!-- Arrow: Decision 1 → Decision 2 -->
+  <line x1="210" y1="204" x2="210" y2="264" stroke="currentColor" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Decision 2 (diamond): Is it interactive? -->
+  <polygon points="210,264 310,314 210,364 110,314"
+           fill="#f0fff4" stroke="#38a169" stroke-width="2"/>
+  <text x="210" y="308" text-anchor="middle" font-size="12"
+        font-family="sans-serif" fill="#1a4731">Is the SVG</text>
+  <text x="210" y="324" text-anchor="middle" font-size="12"
+        font-family="sans-serif" fill="#1a4731">interactive?</text>
+
+  <!-- NO branch label (Informational) -->
+  <text x="355" y="320" text-anchor="start" font-size="11"
+        font-family="sans-serif" font-style="italic" fill="currentColor">No</text>
+  <!-- Arrow: Decision 2 → Informational -->
+  <line x1="310" y1="314" x2="370" y2="314" stroke="currentColor" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="370" y1="314" x2="370" y2="420" stroke="currentColor" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- YES branch label (Interactive) -->
+  <text x="220" y="385" text-anchor="start" font-size="11"
+        font-family="sans-serif" font-style="italic" fill="currentColor">Yes</text>
+  <!-- Arrow: Decision 2 → Interactive -->
+  <line x1="210" y1="364" x2="210" y2="420" stroke="currentColor" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- DECORATIVE outcome box -->
+  <rect x="20" y="260" width="80" height="60" rx="4" ry="4"
+        fill="#fed7d7" stroke="#c53030" stroke-width="2"/>
+  <text x="60" y="283" text-anchor="middle" font-size="10"
+        font-family="sans-serif" font-weight="bold" fill="#63171b">Decorative</text>
+  <text x="60" y="296" text-anchor="middle" font-size="9"
+        font-family="sans-serif" fill="#63171b">aria-hidden="true"</text>
+  <text x="60" y="309" text-anchor="middle" font-size="9"
+        font-family="sans-serif" fill="#63171b">focusable="false"</text>
+
+  <!-- INFORMATIONAL outcome box -->
+  <rect x="310" y="420" width="100" height="80" rx="4" ry="4"
+        fill="#bee3f8" stroke="#2b6cb0" stroke-width="2"/>
+  <text x="360" y="443" text-anchor="middle" font-size="10"
+        font-family="sans-serif" font-weight="bold" fill="#1a365d">Informational</text>
+  <text x="360" y="457" text-anchor="middle" font-size="9"
+        font-family="sans-serif" fill="#1a365d">role="img"</text>
+  <text x="360" y="470" text-anchor="middle" font-size="9"
+        font-family="sans-serif" fill="#1a365d">aria-labelledby</text>
+  <text x="360" y="483" text-anchor="middle" font-size="9"
+        font-family="sans-serif" fill="#1a365d">&lt;title&gt; + &lt;desc&gt;</text>
+  <text x="360" y="496" text-anchor="middle" font-size="9"
+        font-family="sans-serif" fill="#1a365d">HTML alternative</text>
+
+  <!-- INTERACTIVE outcome box -->
+  <rect x="140" y="420" width="120" height="80" rx="4" ry="4"
+        fill="#c6f6d5" stroke="#276749" stroke-width="2"/>
+  <text x="200" y="443" text-anchor="middle" font-size="10"
+        font-family="sans-serif" font-weight="bold" fill="#1c4532">Interactive</text>
+  <text x="200" y="457" text-anchor="middle" font-size="9"
+        font-family="sans-serif" fill="#1c4532">role + tabindex</text>
+  <text x="200" y="470" text-anchor="middle" font-size="9"
+        font-family="sans-serif" fill="#1c4532">keyboard handlers</text>
+  <text x="200" y="483" text-anchor="middle" font-size="9"
+        font-family="sans-serif" fill="#1c4532">aria-label per control</text>
+  <text x="200" y="496" text-anchor="middle" font-size="9"
+        font-family="sans-serif" fill="#1c4532">visible focus ring</text>
+
+  <!-- Arrow marker definition -->
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="currentColor"/>
+    </marker>
+  </defs>
+</svg>

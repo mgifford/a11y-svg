@@ -102,6 +102,7 @@ Direct links to authoritative accessibility guidance:
 - Creating Accessible SVGs (Deque)
 - Forced Colors Guide (Polypane)
 - WCAG 2.2 Quick Reference
+- Creating Accessible Flowcharts (Ashley Sheridan)
 
 ### Output Options
 - Minified, accessible SVG code
