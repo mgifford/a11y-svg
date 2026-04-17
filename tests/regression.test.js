@@ -123,6 +123,25 @@ describe('Regression Tests', () => {
         });
     });
 
+    describe('REGRESSION: title/desc must be inline (Carie Fisher pattern)', () => {
+        it('collapseInlineElements function must exist', () => {
+            assert.ok(appJsContent.includes('function collapseInlineElements'), 'collapseInlineElements must be defined');
+        });
+
+        it('collapseInlineElements must collapse title and desc via regex', () => {
+            // Verify the regex targets title and desc elements with a backreference for tag matching
+            assert.ok(
+                appJsContent.includes('<(title|desc)') && appJsContent.includes('<\\/\\1>'),
+                'collapseInlineElements should target <title>/<desc> with a backreference to enforce matching tags'
+            );
+        });
+
+        it('beautifySvg must call collapseInlineElements', () => {
+            const match = appJsContent.match(/function beautifySvg[\s\S]{0,500}collapseInlineElements/);
+            assert.ok(match, 'beautifySvg must call collapseInlineElements to produce inline title/desc');
+        });
+    });
+
     describe('REGRESSION: Function closures must be complete', () => {
         it('formatXml should have complete implementation', () => {
             assert.ok(appJsContent.includes('function formatXml'), 'formatXml function should exist');
