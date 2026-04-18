@@ -103,6 +103,33 @@ describe('Regression Tests', () => {
         });
     });
 
+    describe('REGRESSION: getMirror must use white-space:pre to match wrap="off" textarea', () => {
+        it('getMirror must use white-space: pre, not pre-wrap', () => {
+            // The textarea uses wrap="off" (no line-wrapping / horizontal scroll).
+            // If the mirror div uses pre-wrap + word-break:break-word, long lines
+            // wrap in the mirror but not in the textarea, producing wrong top offsets
+            // and a misplaced visual caret (the bug reported in GitHub issue:
+            // "Caret & Focus problem in Beautified - Editable source").
+            const mirrorMatch = appJsContent.match(/function getMirror[\s\S]{0,800}/);
+            assert.ok(mirrorMatch, 'getMirror function should exist');
+            const mirrorBody = mirrorMatch[0];
+
+            // Must assign whiteSpace to 'pre' (not 'pre-wrap')
+            assert.ok(
+                /whiteSpace\s*=\s*['"]pre['"]/.test(mirrorBody),
+                'getMirror must set whiteSpace to "pre" (not "pre-wrap") to match textarea wrap="off"'
+            );
+            assert.ok(
+                !/whiteSpace\s*=\s*['"]pre-wrap['"]/.test(mirrorBody),
+                'getMirror must NOT assign pre-wrap to whiteSpace — it breaks caret position for long lines'
+            );
+            assert.ok(
+                !/wordBreak\s*=/.test(mirrorBody),
+                'getMirror must NOT set wordBreak — irrelevant and misleading with white-space:pre'
+            );
+        });
+    });
+
     describe('REGRESSION: Preview rendering must force re-renders', () => {
         it('light preview div must have key prop', () => {
             // Look for key prop with backtick template literal
