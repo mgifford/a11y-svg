@@ -3386,8 +3386,10 @@ function getMirror(doc, style, width) {
         const mirror = doc.createElement('div');
         mirror.style.position = 'absolute';
         mirror.style.visibility = 'hidden';
-        mirror.style.whiteSpace = 'pre-wrap';
-        mirror.style.wordBreak = 'break-word';
+        // Match textarea wrap="off": lines must not wrap (use pre, not pre-wrap).
+        // Using pre-wrap here would cause long lines to wrap in the mirror while
+        // the textarea scrolls horizontally, producing incorrect top offsets.
+        mirror.style.whiteSpace = 'pre';
         mirror.style.top = '0';
         mirror.style.left = '-9999px';
         mirror.style.boxSizing = 'border-box';
