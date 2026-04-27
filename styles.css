@@ -570,6 +570,22 @@ button.small {
 .fail { background-color: var(--error); color: white; }
 .aa { background-color: #1976d2; color: white; }
 .aaa { background-color: #00897b; color: white; }
+.advisory { background-color: #f9a825; color: #1a1a1a; }
+
+.contrast-guidance {
+    margin-top: 0.75rem;
+    padding: 0.5rem;
+    border-left: 3px solid var(--primary);
+    background: var(--primary-light, rgba(0, 90, 156, 0.1));
+    font-size: 0.82rem;
+    line-height: 1.4;
+}
+
+.color-section-heading {
+    font-weight: 700;
+    font-size: 0.9rem;
+    margin-bottom: 0.5rem;
+}
 
 dialog {
     border: 1px solid var(--border);

@@ -114,7 +114,7 @@ See [tests/README.md](tests/README.md) for comprehensive test documentation.
 Our automated testing covers:
 - Semantic HTML structure
 - ARIA attributes and roles
-- Color contrast ratios (WCAG and APCA)
+- Color contrast ratios (WCAG pass/fail and APCA advisory checks for text)
 - Keyboard navigation
 - Focus management
 - SVG accessible name detection

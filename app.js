@@ -1,44 +1,3 @@
-// Suggests a color with good contrast for both light and dark backgrounds
-function suggestDualContrastColor(bgLight, bgDark, isText = true, isLarge = false) {
-    // Example: return black or white depending on which has better contrast for both backgrounds
-    const candidates = ['#000000', '#ffffff'];
-    let best = candidates[0];
-    let bestScore = 0;
-    candidates.forEach(color => {
-        let score = 0;
-        // Use your existing getContrastRatio and getWCAGLevel functions
-        const lightRatio = getContrastRatio(color, bgLight);
-        const darkRatio = getContrastRatio(color, bgDark);
-        const lightLevel = getWCAGLevel(lightRatio, isText, isLarge);
-        const darkLevel = getWCAGLevel(darkRatio, isText, isLarge);
-        if (lightLevel === 'AAA') score += 2;
-        else if (lightLevel === 'AA') score += 1;
-        if (darkLevel === 'AAA') score += 2;
-        else if (darkLevel === 'AA') score += 1;
-        if (score > bestScore) {
-            bestScore = score;
-            best = color;
-        }
-    });
-    return best;
-}
-// Returns true if the SVG text element is considered large for WCAG contrast
-function isLargeText(el) {
-    if (!el || !el.tagName) return false;
-    if (!isTextElement(el)) return false;
-    const fontSize = parseFloat(el.getAttribute('font-size') || '');
-    const fontWeight = (el.getAttribute('font-weight') || '').toLowerCase();
-    // WCAG: large text is ≥ 24px normal or ≥ 18.66px bold
-    if (fontSize >= 24) return true;
-    if (fontSize >= 18.66 && (fontWeight === 'bold' || parseInt(fontWeight) >= 700)) return true;
-    return false;
-}
-// Returns true if the SVG element is a text element
-function isTextElement(el) {
-    if (!el || !el.tagName) return false;
-    const tag = el.tagName.toLowerCase();
-    return tag === 'text' || tag === 'tspan' || tag === 'textpath' || tag === 'altglyph' || tag === 'altglyphdef' || tag === 'altglyphitem';
-}
 /*
  * A11y-SVG-Studio
  * Copyright (C) 2026 Mike Gifford and contributors
@@ -62,6 +21,27 @@ import { optimize } from 'https://esm.sh/svgo@3.2.0/dist/svgo.browser.js';
 import xmlFormatter from 'https://esm.sh/xml-formatter@3.6.0';
 
 // --- Utils & Helpers ---
+
+const APCA_TEXT_TARGET = 75;
+
+// Returns true if the SVG text element is considered large for WCAG contrast
+function isLargeText(el) {
+    if (!el || !el.tagName) return false;
+    if (!isTextElement(el)) return false;
+    const fontSize = parseFloat(el.getAttribute('font-size') || '');
+    const fontWeight = (el.getAttribute('font-weight') || '').toLowerCase();
+    // WCAG: large text is >= 24px normal or >= 18.66px bold
+    if (fontSize >= 24) return true;
+    if (fontSize >= 18.66 && (fontWeight === 'bold' || parseInt(fontWeight) >= 700)) return true;
+    return false;
+}
+
+// Returns true if the SVG element is a text element
+function isTextElement(el) {
+    if (!el || !el.tagName) return false;
+    const tag = el.tagName.toLowerCase();
+    return tag === 'text' || tag === 'tspan' || tag === 'textpath' || tag === 'altglyph' || tag === 'altglyphdef' || tag === 'altglyphitem';
+}
 
 function generateId(prefix = 'id') {
     return `${prefix}-${Math.random().toString(36).substr(2, 9)}`;
@@ -134,7 +114,7 @@ const optimizeSvg = (code, options = {}) => {
 
 function getWCAGLevel(ratio, isText = false, isLarge = false) {
     if (isText) {
-        const aaThreshold = isLarge ? 3 : 4.5;
+        const aaThreshold = getWCAGTargetRatio(isText, isLarge);
         const aaaThreshold = isLarge ? 4.5 : 7;
         if (ratio >= aaaThreshold) return 'AAA';
         if (ratio >= aaThreshold) return 'AA';
@@ -144,6 +124,15 @@ function getWCAGLevel(ratio, isText = false, isLarge = false) {
         if (ratio >= 3) return 'AA';
         return 'Fail';
     }
+}
+
+function getWCAGTargetRatio(isText = false, isLarge = false) {
+    if (isText) return isLarge ? 3 : 4.5;
+    return 3;
+}
+
+function getWCAGRequirement(isText = false, isLarge = false) {
+    return `>= ${getWCAGTargetRatio(isText, isLarge).toFixed(isLarge || !isText ? 1 : 1)}:1`;
 }
 
 const normalizeHex = (hex) => {
@@ -369,9 +358,85 @@ const autoFixContrast = (fgHex, bgHex, targetRatio) => {
 
 const getAPCALevel = (contrast) => {
     const abs = Math.abs(contrast);
-    if (abs >= 90) return 'AAA';
-    if (abs >= 75) return 'AA';
-    return 'Fail';
+    if (abs >= 90) return 'Strong';
+    if (abs >= APCA_TEXT_TARGET) return 'Comfortable';
+    return 'Low';
+};
+
+const getAPCABadgeClass = (contrast) => {
+    const level = getAPCALevel(contrast);
+    if (level === 'Low') return 'advisory';
+    if (level === 'Strong') return 'aaa';
+    return 'aa';
+};
+
+const scoreContrastCandidate = (color, backgrounds, isText, isLarge, includeApca = false) => {
+    const target = getWCAGTargetRatio(isText, isLarge);
+    let score = 0;
+    backgrounds.forEach((background) => {
+        const ratio = getContrastRatio(color, background);
+        const wcagLevel = getWCAGLevel(ratio, isText, isLarge);
+        if (wcagLevel !== 'Fail') score += 100;
+        if (wcagLevel === 'AAA') score += 25;
+        score += Math.min(ratio / target, 2) * 10;
+        if (includeApca && isText) {
+            const lc = Math.abs(getAPCAContrast(color, background));
+            score += Math.min(lc / APCA_TEXT_TARGET, 1.5) * 10;
+        }
+    });
+    return score;
+};
+
+// Suggests a color with good contrast for both light and dark backgrounds.
+function suggestDualContrastColor(baseColor, bgLight, bgDark, isText = true, isLarge = false) {
+    const normalizedBase = normalizeHex(baseColor) || '#000000';
+    const target = getWCAGTargetRatio(isText, isLarge);
+    const backgrounds = [bgLight, bgDark].filter(Boolean);
+    const candidates = new Set([
+        normalizedBase,
+        '#000000',
+        '#ffffff',
+        '#595959',
+        '#666666',
+        '#767676',
+        '#8a8a8a',
+        '#999999'
+    ]);
+
+    backgrounds.forEach((background) => {
+        candidates.add(autoFixContrast(normalizedBase, background, target));
+    });
+
+    let best = normalizedBase;
+    let bestScore = -Infinity;
+    candidates.forEach((candidate) => {
+        const normalizedCandidate = normalizeHex(candidate);
+        if (!normalizedCandidate) return;
+        const score = scoreContrastCandidate(normalizedCandidate, backgrounds, isText, isLarge, true);
+        if (score > bestScore) {
+            bestScore = score;
+            best = normalizedCandidate;
+        }
+    });
+    return best;
+}
+
+function suggestAccessibleColor(color, bgLight, bgDark, isText = true, mode = 'wcag', isLarge = false) {
+    const normalized = normalizeHex(color) || '#000000';
+    const target = getWCAGTargetRatio(isText, isLarge);
+    const backgrounds = [bgLight, bgDark].filter(Boolean);
+    const uniqueBackgrounds = Array.from(new Set(backgrounds.map(bg => String(bg || '').toLowerCase())));
+
+    if (uniqueBackgrounds.length <= 1) {
+        const background = backgrounds[0] || '#ffffff';
+        const wcagFixed = autoFixContrast(normalized, background, target);
+        if (mode !== 'apca' || !isText || Math.abs(getAPCAContrast(wcagFixed, background)) >= APCA_TEXT_TARGET) {
+            return wcagFixed;
+        }
+        return suggestDualContrastColor(wcagFixed, background, background, isText, isLarge);
+    }
+
+    return suggestDualContrastColor(normalized, bgLight, bgDark, isText, isLarge);
 };
 
 const ensureElementId = (element, prefix, doc) => {
@@ -567,10 +632,19 @@ const App = () => {
         const looksLikeFilename = (s) => {
             if (!s) return false;
             const str = String(s).trim();
-            if (/\.[a-z0-9]{2,4}$/i.test(str)) return true;
-            if (/[\\/]/.test(str)) return true;
+            if (/\.(?:svg|png|jpe?g|gif|webp|avif|pdf|xml|json)$/i.test(str)) return true;
+            if (/^(?:[a-z]:[\\/]|\.{1,2}[\\/]|~[\\/]|\/)/i.test(str)) return true;
+            if (/\\/.test(str)) return true;
+            const slashCount = (str.match(/\//g) || []).length;
+            if (slashCount > 1) return true;
+            if (slashCount === 1 && /\/[^/\s]+\.[a-z0-9]{2,5}$/i.test(str)) return true;
             const base = (currentFileName || '').replace(/\.[^/.]+$/, '').toLowerCase();
-            if (base && str.toLowerCase() === base) return true;
+            if (base && str.toLowerCase() === base) {
+                const compact = str.replace(/\s+/g, '');
+                const isSlug = /[_-]/.test(str) || /^[a-z0-9.]+$/i.test(compact);
+                const isGenericGenerated = /^(?:image|svg|icon|vector|download|untitled|file)[-_ ]?\d*$/i.test(str);
+                return isSlug || isGenericGenerated;
+            }
             return false;
         };
 
@@ -876,7 +950,7 @@ const App = () => {
                     const hasAriaLabel = ariaLabel && ariaLabel.trim().length > 0;
                     const hasAriaLabelledby = ariaLabelledby && ariaLabelledby.trim().length > 0;
                     const hasTitle = titleEl && titleEl.textContent && titleEl.textContent.trim().length > 0;
-                    
+
                     // ERROR: No accessible name at all
                     if (!hasAriaLabel && !hasAriaLabelledby && !hasTitle) {
                         issues.push({
@@ -919,11 +993,11 @@ const App = () => {
                     const wcagDarkLevel = getWCAGLevel(ratioDark, isText, isLarge);
                     const wcagFail = wcagLightLevel === 'Fail' || wcagDarkLevel === 'Fail';
                     if (wcagFail) {
-                        const suggested = suggestAccessibleColor(hex, bgLight, bgDark, isText, contrastMode);
+                        const suggested = suggestAccessibleColor(hex, bgLight, bgDark, isText, contrastMode, isLarge);
                         const wcagDetail = {
                             check: 'WCAG 2.2',
                             target: targetLabel,
-                            requirement: isText ? (isLarge ? '≥ 3.0:1' : '≥ 4.5:1') : '≥ 3.0:1',
+                            requirement: getWCAGRequirement(isText, isLarge),
                             light: {
                                 background: bgLight,
                                 ratio: ratioLight,
@@ -944,26 +1018,26 @@ const App = () => {
                         const apcaDark = getAPCAContrast(hexDark, bgDark);
                         const absLight = Math.abs(apcaLight);
                         const absDark = Math.abs(apcaDark);
-                        const apcaThreshold = isText ? 75 : 60;
+                        const apcaThreshold = APCA_TEXT_TARGET;
                         if (absLight < apcaThreshold || absDark < apcaThreshold) {
-                            const suggested2 = suggestAccessibleColor(hex, bgLight, bgDark, isText, 'apca');
+                            const suggested2 = suggestAccessibleColor(hex, bgLight, bgDark, isText, 'apca', isLarge);
                             const apcaDetail = {
                                 check: 'APCA',
                                 target: targetLabel,
-                                requirement: `≥ ${apcaThreshold} Lc`,
+                                requirement: `target >= ${apcaThreshold} Lc for readable text`,
                                 light: {
                                     background: bgLight,
                                     lc: apcaLight,
-                                    status: absLight >= apcaThreshold ? 'Pass' : 'Fail'
+                                    status: absLight >= apcaThreshold ? 'Comfortable' : 'Low'
                                 },
                                 dark: {
                                     background: bgDark,
                                     lc: apcaDark,
-                                    status: absDark >= apcaThreshold ? 'Pass' : 'Fail'
+                                    status: absDark >= apcaThreshold ? 'Comfortable' : 'Low'
                                 }
                             };
-                            const heading = `Color ${hex} fails APCA contrast for ${targetLabel}`;
-                            issues.push({ level: 'warning', type: 'color', hex, hexDark, originals, darkOriginals: c.darkOriginals || [], attrs: c.attrs || [], suggested: suggested2, heading, detail: apcaDetail, findingCount: 1, isText, isLarge });
+                            const heading = `Color ${hex} has low APCA readability for ${targetLabel}`;
+                            issues.push({ level: 'info', type: 'color', hex, hexDark, originals, darkOriginals: c.darkOriginals || [], attrs: c.attrs || [], suggested: suggested2, heading, detail: apcaDetail, findingCount: 1, isText, isLarge });
                         }
                     }
                 });
@@ -1631,7 +1705,7 @@ const App = () => {
                 if (files.length > 0) {
                     // Get the last 3 loaded SVGs from localStorage
                     const history = JSON.parse(localStorage.getItem('svgHistory') || '[]');
-                    
+
                     // Filter out files that were loaded in the last 3 sessions
                     const availableFiles = files.filter(f => !history.includes(f));
                     
@@ -2313,12 +2387,15 @@ const App = () => {
                     ]),
                     
                     // Helpful hints
-                    (!meta.title || looksLikeFilename(meta.title)) && 
-                        h('p', { class: 'meta-hint warning' }, '⚠ Title should be human-readable, not a filename'),
+                    !meta.title &&
+                        h('p', { class: 'meta-hint warning' }, 'Title is required for meaningful SVGs'),
+
+                    meta.title && looksLikeFilename(meta.title) &&
+                        h('p', { class: 'meta-hint warning' }, 'Title looks like a file name or path; use a short human-readable label'),
                     
-                    meta.title && !meta.desc && 
+                    meta.title && !meta.desc &&
                         h('p', { class: 'meta-hint' }, 'ℹ️ Add a description for better accessibility'),
-                        
+
                     meta.title && meta.desc && countWords(meta.desc) < 5 &&
                         h('p', { class: 'meta-hint' }, 'ℹ️ Description should be 5+ words for clarity')
                 ])
@@ -2363,6 +2440,10 @@ const App = () => {
                         })
                     ])
                 ]),
+                h('div', { class: 'contrast-guidance', role: 'note' }, [
+                    h('strong', {}, 'Contrast guidance: '),
+                    'WCAG is the required pass/fail check. APCA Lc is an advisory text-readability signal, so use it to improve text comfort after WCAG passes. Graphic colors use WCAG 3:1 only when the shape conveys meaning.'
+                ]),
 
                 // Text Colors (always show both WCAG + APCA)
                 (() => {
@@ -2371,7 +2452,7 @@ const App = () => {
                     
                     const hoveredHex = normalizeHex(hoveredColor);
                     return h('div', { style: 'margin-top: 1rem;' }, [
-                        h('div', { style: 'font-weight: bold; font-size: 0.9rem; margin-bottom: 0.5rem;' }, `Text Colors (${textColors.length})`),
+                        h('div', { class: 'color-section-heading' }, `Text Colors (${textColors.length}) - WCAG + APCA`),
                         h('div', { class: 'color-list' }, textColors.map((colorInfo, idx) => {
                             const c = colorInfo.hex;
                             const isText = true;
@@ -2545,7 +2626,7 @@ const App = () => {
                                 h('div', { style: 'margin-left:auto; display:flex; gap:2px; align-items:center;' }, [
                                     h('div', { 
                                         class: `contrast-badge ${lightLevel === 'Fail' ? 'fail' : lightLevel === 'AAA' ? 'aaa' : 'aa'}`,
-                                        title: `${c} on ${bgLight}: W ${lightRatio.toFixed(2)}:1 (need ${isLarge ? '3:1' : '4.5:1'})${lightLevel === 'Fail' ? ' - Click to auto-fix!' : ''}`,
+                                        title: `${c} on ${bgLight}: WCAG ${lightRatio.toFixed(2)}:1 (required ${getWCAGRequirement(isText, isLarge)})${lightLevel === 'Fail' ? ' - Click to auto-fix' : ''}`,
                                         style: lightLevel === 'Fail' ? 'cursor: pointer;' : '',
                                         onClick: lightLevel === 'Fail' ? () => {
                                             const targetRatio = isLarge ? 3 : 4.5;
@@ -2566,9 +2647,9 @@ const App = () => {
                                         } : undefined
                                     }, `W:${lightRatio.toFixed(1)}`),
                                     h('div', { 
-                                        class: `contrast-badge ${lightLcLevel === 'Fail' ? 'fail' : lightLcLevel === 'AAA' ? 'aaa' : 'aa'}`,
-                                        title: `${c} on ${bgLight}: A ${lightLc.toFixed(1)} Lc (need 75+ Lc)`
-                                    }, `A:${lightLc.toFixed(0)}`)
+                                        class: `contrast-badge ${getAPCABadgeClass(lightLc)}`,
+                                        title: `${c} on ${bgLight}: APCA Lc ${lightLc.toFixed(1)} (${lightLcLevel}; advisory target ${APCA_TEXT_TARGET}+ Lc for readable text)`
+                                    }, `Lc:${lightLc.toFixed(0)}`)
                                 ])
                              ]),
                              // Dark mode color row
@@ -2624,7 +2705,7 @@ const App = () => {
                                 h('div', { style: 'margin-left:auto; display:flex; gap:2px; align-items:center;' }, [
                                     h('div', { 
                                         class: `contrast-badge ${darkLevel === 'Fail' ? 'fail' : darkLevel === 'AAA' ? 'aaa' : 'aa'}`,
-                                        title: `${darkModeColor} on ${bgDark}: W ${darkRatio.toFixed(2)}:1 (need ${isLarge ? '3:1' : '4.5:1'})${darkLevel === 'Fail' ? ' - Click to auto-fix!' : ''}`,
+                                        title: `${darkModeColor} on ${bgDark}: WCAG ${darkRatio.toFixed(2)}:1 (required ${getWCAGRequirement(isText, isLarge)})${darkLevel === 'Fail' ? ' - Click to auto-fix' : ''}`,
                                         style: darkLevel === 'Fail' ? 'cursor: pointer;' : '',
                                         onClick: darkLevel === 'Fail' ? () => {
                                             const targetRatio = isLarge ? 3 : 4.5;
@@ -2637,9 +2718,9 @@ const App = () => {
                                         } : undefined
                                     }, `W:${darkRatio.toFixed(1)}`),
                                     h('div', { 
-                                        class: `contrast-badge ${darkLcLevel === 'Fail' ? 'fail' : darkLcLevel === 'AAA' ? 'aaa' : 'aa'}`,
-                                        title: `${darkModeColor} on ${bgDark}: A ${darkLc.toFixed(1)} Lc (need 75+ Lc)`
-                                    }, `A:${darkLc.toFixed(0)}`)
+                                        class: `contrast-badge ${getAPCABadgeClass(darkLc)}`,
+                                        title: `${darkModeColor} on ${bgDark}: APCA Lc ${darkLc.toFixed(1)} (${darkLcLevel}; advisory target ${APCA_TEXT_TARGET}+ Lc for readable text)`
+                                    }, `Lc:${darkLc.toFixed(0)}`)
                                 ])
                              ])
                         ]);
@@ -2654,7 +2735,7 @@ const App = () => {
                     
                     const hoveredHex = normalizeHex(hoveredColor);
                     return h('div', { style: 'margin-top: 1rem;' }, [
-                        h('div', { style: 'font-weight: bold; font-size: 0.9rem; margin-bottom: 0.5rem;' }, `Graphic Colors (${graphicColors.length})`),
+                        h('div', { class: 'color-section-heading' }, `Graphic Colors (${graphicColors.length}) - WCAG 3:1`),
                         h('div', { class: 'color-list' }, graphicColors.map((colorInfo, idx) => {
                             const c = colorInfo.hex;
                             const isText = false;
@@ -3201,7 +3282,7 @@ const App = () => {
                     const ratio = getContrastRatio(color, background);
                     if (getWCAGLevel(ratio, isText, isLarge) === 'Fail') return false;
                     if (!isText) return true;
-                    return Math.abs(getAPCAContrast(color, background)) >= 75;
+                    return Math.abs(getAPCAContrast(color, background)) >= APCA_TEXT_TARGET;
                 };
 
                 const refineForBackground = (baseColor, background, isText, isLarge) => {
@@ -3265,10 +3346,10 @@ const App = () => {
                         const apcaInfo = apcaDetails.find(detail => detail[key]);
                         const metrics = [];
                         if (wcagInfo && wcagInfo[key]) {
-                            metrics.push(`WCAG ${formatRatio(wcagInfo[key].ratio)}:1 (${wcagInfo[key].status}; needs ${wcagInfo.requirement})`);
+                            metrics.push(`WCAG ${formatRatio(wcagInfo[key].ratio)}:1 (${wcagInfo[key].status}; required ${wcagInfo.requirement})`);
                         }
                         if (apcaInfo && apcaInfo[key]) {
-                            metrics.push(`APCA Lc ${formatLc(apcaInfo[key].lc)} (${apcaInfo[key].status}; needs ${apcaInfo.requirement})`);
+                            metrics.push(`APCA Lc ${formatLc(apcaInfo[key].lc)} (${apcaInfo[key].status}; ${apcaInfo.requirement})`);
                         }
                         if (metrics.length > 0) {
                             detailLines.push(`Foreground ${v.hex} on ${label} background ${formatBg(background)} — ${metrics.join('; ')}`);
@@ -3474,5 +3555,3 @@ function computeCaretPosition(textarea) {
         height: lineHeight
     };
 }
-
-

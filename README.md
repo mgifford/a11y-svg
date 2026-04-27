@@ -8,7 +8,7 @@ A browser-native SVG optimization tool that prioritizes **WCAG 2.2 AA accessibil
 - **Accessibility First**: WCAG 2.2 AA compliant with keyboard navigation and screen reader support
 - **SVG Optimization**: SVGO integration that preserves accessibility attributes
 - **Theme Awareness**: Dynamic light/dark mode support with `currentColor` and CSS media queries
-- **Contrast Checking**: Real-time WCAG 2.2 contrast ratio validation
+- **Contrast Checking**: Real-time WCAG 2.2 contrast validation with APCA Lc used as an advisory text-readability signal
 - **License**: AGPL-3.0
 
 ## 🚀 Quick Start
@@ -93,7 +93,8 @@ Following [Carie Fisher's Accessible SVG patterns](https://www.smashingmagazine.
 ### Visual Contrast Engine
 - Parse all `fill` / `stroke` colors
 - Interactive color picker for adjustments
-- Real-time WCAG 2.2 contrast ratio calculator
+- Real-time WCAG 2.2 contrast ratio calculator for required pass/fail checks
+- APCA Lc guidance for text colors only, used as an advisory readability signal after WCAG thresholds are considered
 - Test against configurable background colors
 
 ### Resources
@@ -158,7 +159,7 @@ Transparency about AI use is a first-class concern for this project.
 
 ### Was AI used to build this project?
 
-**Yes.** [GitHub Copilot Coding Agent](https://docs.github.com/en/copilot/how-tos/use-copilot-agents/coding-agent/about-github-copilot-coding-agent) has been used throughout development to implement features, write tests, refactor code, and author documentation — including this file. The `.github/copilot-instructions.md` and `AGENTS.md` files provide the instructions and guardrails that govern how the agent operates in this repository.
+**Yes.** [GitHub Copilot Coding Agent](https://docs.github.com/en/copilot/how-tos/use-copilot-agents/coding-agent/about-github-copilot-coding-agent) has been used throughout development to implement features, write tests, refactor code, and author documentation — including this file. OpenAI Codex (GPT-5) was also used for development and documentation updates related to title validation and contrast guidance. The `.github/copilot-instructions.md` and `AGENTS.md` files provide the instructions and guardrails that govern how agents operate in this repository.
 
 ### Is AI used when running the program?
 
@@ -176,8 +177,8 @@ The [Accessibility Scanner workflow](.github/workflows/accessibility-scanner.yml
 
 | Context | AI used? | Tool |
 |---------|----------|------|
-| Building / coding the project | ✅ Yes | GitHub Copilot Coding Agent |
-| Writing tests and documentation | ✅ Yes | GitHub Copilot Coding Agent |
+| Building / coding the project | ✅ Yes | GitHub Copilot Coding Agent; OpenAI Codex (GPT-5) |
+| Writing tests and documentation | ✅ Yes | GitHub Copilot Coding Agent; OpenAI Codex (GPT-5) |
 | CI/CD accessibility issue triage | ✅ Yes | GitHub Copilot (issue assignment) |
 | Running the browser application | ❌ No | — |
 | Browser-based / client-side AI | ❌ No | — |
