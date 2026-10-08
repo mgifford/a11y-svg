@@ -111,6 +111,7 @@ jobs:
       - name: Ensure maintenance:* labels exist
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          POLICY_ROOT: ${{ github.workspace }}/.tune-my-repos-policy
         run: bash .github/scripts/ensure-maintenance-labels.sh
 
       - name: Apply labels
