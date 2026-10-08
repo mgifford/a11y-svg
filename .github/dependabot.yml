@@ -1,0 +1,14 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    ignore:
+      # extract-zip has no patched release for the known symlink/path-traversal
+      # advisories (GHSA-g4qk-w5ff-mwfc, GHSA-qq89-hq3f-393p) as of 2.0.1. It is
+      # pulled in transitively via chromedriver -> @axe-core/cli and cannot be
+      # upgraded until upstream ships a fix. Without this rule, Dependabot's
+      # security-update job repeatedly fails with `security_update_not_found`.
+      # Remove this entry once a patched extract-zip release is available.
+      - dependency-name: "extract-zip"
