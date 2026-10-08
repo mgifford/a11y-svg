@@ -1,0 +1,188 @@
+name: Dependabot Pilot
+
+# Pilot workflow, reusable across repositories in maintenance-policy.yml's
+# tiers.pilot list (see the rollout checklist in README.md before copying
+# this file + .github/scripts/classify-dependabot-pr.cjs +
+# .github/scripts/ensure-maintenance-labels.sh +
+# .github/scripts/maintenance-label-names.cjs to another repository).
+#
+# The policy engine itself (policy/, scripts/, maintenance-policy.json) is
+# NOT duplicated into each pilot repo. Every run fetches a fresh, read-only
+# copy from mgifford/tune-my-repos (public, no token needed) via the
+# "Checkout shared policy engine" step below, so a policy or bug fix there
+# takes effect on every pilot repo's next PR event without any manual
+# re-sync. See .github/scripts/classify-dependabot-pr.cjs's POLICY_ROOT.
+#
+# Two independent jobs, both restricted to PRs opened by dependabot[bot]:
+#
+#   1. label: deterministically labels a Dependabot PR with its ecosystem,
+#      update type, and dependency class, using the same parsing logic as
+#      scripts/generate-maintenance-rollup.cjs. Read PR metadata only; never
+#      checks out or executes the PR's own branch content.
+#
+#   2. auto-merge: requests GitHub's native auto-merge (which itself waits
+#      for this repository's own required status check) ONLY when:
+#        - the repository variable MAINTENANCE_AUTOMERGE_ENABLED is "true"
+#          (opt-in, disabled by default)
+#        - policy/policy-engine.cjs classifies the update as "eligible"
+#      Every update the policy marks as needs_review / needs_repair /
+#      blocked / ignored is left untouched for a human to merge manually.
+#      This workflow never bypasses or overrides required checks: it asks
+#      GitHub to merge automatically once they pass, same as a human
+#      clicking "Enable auto-merge" would. This repository MUST have branch
+#      protection requiring at least one real CI check before auto-merge is
+#      ever turned on — see the rollout checklist in README.md.
+#
+# Uses pull_request_target deliberately so the workflow has write access to
+# label/merge even though Dependabot PRs may run with restricted
+# permissions, but it never checks out, builds, or executes any code from
+# the pull request branch itself — only PR metadata (title, labels, head
+# SHA) is read, and that SHA is used solely to pass to `gh pr merge`.
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, labeled]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write # required to create a missing "maintenance:*" label; see ensure-maintenance-labels.sh
+
+concurrency:
+  group: dependabot-pilot-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  label:
+    name: Label Dependabot PR
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout this repository's orchestration scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          sparse-checkout: |
+            .github/scripts/
+          sparse-checkout-cone-mode: false
+
+      - name: Checkout shared policy engine (read-only, from mgifford/tune-my-repos)
+        if: github.repository != 'mgifford/tune-my-repos'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: mgifford/tune-my-repos
+          path: .tune-my-repos-policy
+          sparse-checkout: |
+            policy
+            scripts
+            maintenance-policy.json
+          sparse-checkout-cone-mode: false
+
+      - name: Checkout this repository's own policy engine (tune-my-repos only)
+        if: github.repository == 'mgifford/tune-my-repos'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: .tune-my-repos-policy
+          sparse-checkout: |
+            policy
+            scripts
+            maintenance-policy.json
+          sparse-checkout-cone-mode: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+
+      - name: Classify and label
+        id: classify
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_BASE_REF: ${{ github.event.pull_request.base.sha }}
+          REPO_FULL_NAME: ${{ github.repository }}
+          POLICY_ROOT: ${{ github.workspace }}/.tune-my-repos-policy
+        run: node .github/scripts/classify-dependabot-pr.cjs
+
+      - name: Ensure maintenance:* labels exist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash .github/scripts/ensure-maintenance-labels.sh
+
+      - name: Apply labels
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr edit "${{ github.event.pull_request.number }}" \
+            --add-label "maintenance:${{ steps.classify.outputs.dependency_class }}" \
+            --add-label "maintenance:${{ steps.classify.outputs.update_type }}" \
+            --add-label "maintenance:${{ steps.classify.outputs.risk_state }}"
+
+  auto-merge:
+    name: Request auto-merge if eligible
+    needs: label
+    if: github.event.pull_request.user.login == 'dependabot[bot]' && vars.MAINTENANCE_AUTOMERGE_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout this repository's orchestration scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          sparse-checkout: |
+            .github/scripts/
+          sparse-checkout-cone-mode: false
+
+      - name: Checkout shared policy engine (read-only, from mgifford/tune-my-repos)
+        if: github.repository != 'mgifford/tune-my-repos'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: mgifford/tune-my-repos
+          path: .tune-my-repos-policy
+          sparse-checkout: |
+            policy
+            scripts
+            maintenance-policy.json
+          sparse-checkout-cone-mode: false
+
+      - name: Checkout this repository's own policy engine (tune-my-repos only)
+        if: github.repository == 'mgifford/tune-my-repos'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: .tune-my-repos-policy
+          sparse-checkout: |
+            policy
+            scripts
+            maintenance-policy.json
+          sparse-checkout-cone-mode: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+
+      - name: Classify
+        id: classify
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_BASE_REF: ${{ github.event.pull_request.base.sha }}
+          REPO_FULL_NAME: ${{ github.repository }}
+          POLICY_ROOT: ${{ github.workspace }}/.tune-my-repos-policy
+        run: node .github/scripts/classify-dependabot-pr.cjs
+
+      - name: Enable auto-merge for eligible updates only
+        if: steps.classify.outputs.risk_state == 'eligible'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr merge --auto --squash \
+            --match-head-commit "${{ github.event.pull_request.head.sha }}" \
+            "${{ github.event.pull_request.number }}"
