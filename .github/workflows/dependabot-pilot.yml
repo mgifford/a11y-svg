@@ -32,6 +32,9 @@ name: Dependabot Pilot
 #      clicking "Enable auto-merge" would. This repository MUST have branch
 #      protection requiring at least one real CI check before auto-merge is
 #      ever turned on — see the rollout checklist in README.md.
+#      If the PR is already mergeable when this job runs (its checks
+#      finished first), auto-merge cannot be queued and this job cannot
+#      merge directly, so it leaves a notice and a human merges it.
 #
 # Uses pull_request_target deliberately so the workflow has write access to
 # label/merge even though Dependabot PRs may run with restricted
@@ -183,7 +186,18 @@ jobs:
         if: steps.classify.outputs.risk_state == 'eligible'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          gh pr merge --auto --squash \
-            --match-head-commit "${{ github.event.pull_request.head.sha }}" \
-            "${{ github.event.pull_request.number }}"
+          # For these states gh merges at once instead of queueing auto-merge
+          # (cli/cli pkg/cmd/pr/merge/merge.go, isImmediatelyMergeable). This
+          # token cannot merge directly, by design: see the IMPORTANT note in
+          # classify-dependabot-pr.cjs.
+          STATE=$(gh pr view "$PR_NUMBER" --json mergeStateStatus --jq .mergeStateStatus)
+          case "$STATE" in
+            CLEAN|HAS_HOOKS|UNSTABLE)
+              echo "::notice::PR $PR_NUMBER is eligible but already mergeable ($STATE), so auto-merge cannot be queued. Merge it by hand."
+              exit 0
+              ;;
+          esac
+          gh pr merge --auto --squash --match-head-commit "$HEAD_SHA" "$PR_NUMBER"
